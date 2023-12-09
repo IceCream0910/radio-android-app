@@ -5,9 +5,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
-        android:name=".SimpleMediaPlayerApp"
+        android:name="com.icecream.simplemediaplayer.SimpleMediaPlayerApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -16,10 +17,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SimpleMediaPlayer"
+        android:usesCleartextTraffic="true"
         tools:targetApi="31">
         <activity
-            android:name=".common.ui.SimpleMediaActivity"
+            android:name="com.icecream.simplemediaplayer.common.ui.SimpleMediaActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
+            android:screenOrientation="portrait"
             android:exported="true"
             android:theme="@style/Theme.SimpleMediaPlayer">
             <intent-filter>
@@ -34,7 +37,7 @@
         </activity>
 
         <service
-            android:name="com.rcudev.player_service.service.SimpleMediaService"
+            android:name="com.icecream.player_service.service.SimpleMediaService"
             android:foregroundServiceType="mediaPlayback" />
     </application>
 

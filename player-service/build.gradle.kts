@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.rcudev.player_service"
+    namespace = "com.icecream.player_service"
     compileSdk = 34
 
     defaultConfig {

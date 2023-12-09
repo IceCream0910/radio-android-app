@@ -8,11 +8,11 @@ plugins {
 var composeVersion: String = "1.5.4"
 
 android {
-    namespace = "com.rcudev.simplemediaplayer"
+    namespace = "com.icecream.simplemediaplayer"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.rcudev.simplemediaplayer"
+        applicationId = "com.icecream.simplemediaplayer"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
@@ -63,6 +63,7 @@ dependencies {
     implementation("androidx.compose.material3:material3:1.1.2")
     implementation("androidx.navigation:navigation-compose:2.7.5")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
+    implementation("com.google.accompanist:accompanist-systemuicontroller:0.27.0")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.46.1")
@@ -70,6 +71,7 @@ dependencies {
 
     // Media3
     implementation("androidx.media3:media3-session:1.2.0")
+    implementation("androidx.media3:media3-exoplayer-hls:1.2.0")
 
     // Coil
     implementation("io.coil-kt:coil-compose:2.4.0")
