@@ -25,7 +25,6 @@ class SimpleMediaServiceHandler @Inject constructor(
     }
 
     fun addMediaItem(mediaItem: MediaItem) {
-        Log.e("taein", "addMediaItem" + mediaItem)
         player.setMediaItem(mediaItem)
         player.prepare()
         player.play()

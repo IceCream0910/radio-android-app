@@ -1,4 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <application>
+        <service
+            android:name=".service.TimerService"
+            android:enabled="true"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true"></service>
+
+        <receiver
+            android:name=".service.NotificationActionReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="ACTION_CANCEL_TIMER" />
+            </intent-filter>
+        </receiver>
+    </application>
+
 </manifest>

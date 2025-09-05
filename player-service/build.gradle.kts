@@ -7,7 +7,11 @@ plugins {
 
 android {
     namespace = "com.icecream.player_service"
-    compileSdk = 34
+    compileSdk = 36
+
+    kotlinOptions {
+        jvmTarget = "21"
+    }
 
     defaultConfig {
         minSdk = 26
@@ -26,8 +30,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 }
 
@@ -39,8 +43,8 @@ dependencies {
     implementation("com.google.android.material:material:1.10.0")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.46.1")
-    kapt("com.google.dagger:hilt-compiler:2.46.1")
+    implementation("com.google.dagger:hilt-android:2.56.2")
+    kapt("com.google.dagger:hilt-compiler:2.56.2")
 
     // Media3
     implementation("androidx.media3:media3-exoplayer:1.2.0")

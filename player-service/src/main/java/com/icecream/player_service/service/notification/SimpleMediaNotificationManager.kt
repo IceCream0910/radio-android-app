@@ -20,7 +20,7 @@ import javax.inject.Inject
 
 
 private const val NOTIFICATION_ID = 200
-private const val NOTIFICATION_CHANNEL_NAME = "notification channel 1"
+private const val NOTIFICATION_CHANNEL_NAME = "라디오 재생"
 private const val NOTIFICATION_CHANNEL_ID = "notification channel id 1"
 
 class SimpleMediaNotificationManager @Inject constructor(

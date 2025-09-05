@@ -1,8 +1,11 @@
 package com.icecream.simplemediaplayer.secondary
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -17,29 +20,35 @@ fun SecondaryScreen(
     vm: SimpleMediaViewModel
 ) {
 
-    Scaffold(
-        bottomBar = {
-            BottomPlayerUI(
-                durationString = vm.formatDuration(vm.duration),
-                playResourceProvider = {
-                    if (vm.isPlaying) android.R.drawable.ic_media_pause
-                    else android.R.drawable.ic_media_play
-                },
-                progressProvider = { Pair(vm.progress, vm.progressString) },
-                onUiEvent = vm::onUIEvent
-            )
-        }
-    ) { paddingValues ->
-        Surface(
-            modifier = Modifier.padding(paddingValues)
-        ) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets(0)) // Edge-to-Edge: 시스템 인셋을 무시하고 전체 화면 사용
+    ) {
+        Scaffold(
+            bottomBar = {
+                BottomPlayerUI(
+                    durationString = vm.formatDuration(vm.duration),
+                    playResourceProvider = {
+                        if (vm.isPlaying) android.R.drawable.ic_media_pause
+                        else android.R.drawable.ic_media_play
+                    },
+                    progressProvider = { Pair(vm.progress, vm.progressString) },
+                    onUiEvent = vm::onUIEvent
+                )
+            }
+        ) { paddingValues ->
+            Surface(
+                modifier = Modifier.padding(paddingValues)
+            ) {
 
-            Image(
-                painter = rememberAsyncImagePainter("https://i.pinimg.com/736x/4b/02/1f/4b021f002b90ab163ef41aaaaa17c7a4.jpg"),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+                Image(
+                    painter = rememberAsyncImagePainter("https://i.pinimg.com/736x/4b/02/1f/4b021f002b90ab163ef41aaaaa17c7a4.jpg"),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 }
