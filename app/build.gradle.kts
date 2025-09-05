@@ -16,8 +16,8 @@ android {
         applicationId = "com.icecream.simplemediaplayer"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.0.2"
+        versionCode = 8
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -27,6 +27,7 @@ android {
 
     buildTypes {
         getByName("release") {
+
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -75,6 +76,9 @@ dependencies {
     // Media3
     implementation("androidx.media3:media3-session:1.2.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.2.0")
+
+    // Android Auto support
+    implementation("androidx.media:media:1.7.0")
 
     // Coil
     implementation("io.coil-kt:coil-compose:2.4.0")

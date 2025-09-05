@@ -11,6 +11,7 @@
     <application
         android:name=".SimpleMediaPlayerApp"
         android:allowBackup="true"
+        android:appCategory="audio"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -20,16 +21,26 @@
         android:theme="@style/Theme.SimpleMediaPlayer"
         android:usesCleartextTraffic="true"
         tools:targetApi="33">
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <activity
             android:name=".common.ui.SimpleMediaActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode"
             android:exported="true"
+            android:launchMode="singleTop"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.SimpleMediaPlayer">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
             <meta-data
@@ -39,7 +50,13 @@
 
         <service
             android:name="com.icecream.player_service.service.SimpleMediaService"
-            android:foregroundServiceType="mediaPlayback" />
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+                <action android:name="android.media.session.MediaLibraryService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

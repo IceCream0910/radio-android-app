@@ -6,7 +6,8 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
-import androidx.media3.session.MediaSession
+import com.icecream.player_service.api.RadioStationApi
+import com.icecream.player_service.service.SimpleMediaService
 import com.icecream.player_service.service.SimpleMediaServiceHandler
 import com.icecream.player_service.service.notification.SimpleMediaNotificationManager
 import dagger.Module
@@ -14,6 +15,8 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 import javax.inject.Singleton
 
 @Module
@@ -39,7 +42,12 @@ class SimpleMediaModule {
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setTrackSelector(DefaultTrackSelector(context))
+            .setSeekBackIncrementMs(1) // 뒤로 시크 비활성화
+            .setSeekForwardIncrementMs(1) // 앞으로 시크 비활성화
             .build()
+            .apply {
+                playWhenReady = false
+            }
 
     @Provides
     @Singleton
@@ -54,11 +62,8 @@ class SimpleMediaModule {
 
     @Provides
     @Singleton
-    fun provideMediaSession(
-        @ApplicationContext context: Context,
-        player: ExoPlayer
-    ): MediaSession =
-        MediaSession.Builder(context, player).build()
+    fun provideMediaLibrarySessionCallback(): SimpleMediaService.MediaLibrarySessionCallback =
+        SimpleMediaService.MediaLibrarySessionCallback()
 
     @Provides
     @Singleton
@@ -68,4 +73,19 @@ class SimpleMediaModule {
         SimpleMediaServiceHandler(
             player = player
         )
+
+    @Provides
+    @Singleton
+    fun provideRetrofit(): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl("https://radio.yuntae.in/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideRadioStationApi(retrofit: Retrofit): RadioStationApi {
+        return retrofit.create(RadioStationApi::class.java)
+    }
 }

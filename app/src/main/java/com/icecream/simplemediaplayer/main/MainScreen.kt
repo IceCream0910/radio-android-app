@@ -260,7 +260,7 @@ private fun WebViewContent(
                     JavascriptBridge(viewModel, context, startService),
                     "Native"
                 )
-                loadUrl("http://192.168.219.197:3000") //https://radio.yuntae.in
+                loadUrl("https://radio.yuntae.in") //https://radio.yuntae.in
                 webViewReference(this)
                 webView = this
             }
