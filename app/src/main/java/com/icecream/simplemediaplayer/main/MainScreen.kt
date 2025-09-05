@@ -68,7 +68,6 @@ internal fun SimpleMediaScreen(
 
     var playbackStateString by remember { mutableStateOf<String>("null") }
 
-    // WebView가 준비되고 pending state가 있으면 전달
     LaunchedEffect(isWebViewReady, pendingPlayerState) {
         if (isWebViewReady && pendingPlayerState != null) {
             webViewReference?.evaluateJavascript("playerRef.current.nativePlayerState('$pendingPlayerState')", null)
@@ -76,7 +75,6 @@ internal fun SimpleMediaScreen(
         }
     }
 
-    // playbackState 변경 처리 개선
     LaunchedEffect(playbackState) {
         val newState = when {
             playbackState.toString().indexOf("Buffering") > -1 -> "buffer"
@@ -87,9 +85,7 @@ internal fun SimpleMediaScreen(
 
         playbackStateString = newState
 
-        // WebView가 준비되어 있으면 즉시 전달, 아니면 pending으로 저장
         if (isWebViewReady && webViewReference != null) {
-            // JavaScript 함수가 존재하는지 확인 후 호출
             webViewReference?.evaluateJavascript("""
                 (function() {
                     try {
@@ -105,7 +101,6 @@ internal fun SimpleMediaScreen(
                 })();
             """.trimIndent()) { result ->
                 if (result == "\"not_ready\"" || result?.contains("error") == true) {
-                    // JavaScript 함수가 준비되지 않았거나 오류가 발생하면 pending으로 저장
                     pendingPlayerState = newState
                 }
             }

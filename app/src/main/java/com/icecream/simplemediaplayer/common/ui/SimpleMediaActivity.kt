@@ -9,6 +9,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.core.app.ActivityCompat
@@ -59,23 +61,27 @@ class SimpleMediaActivity : ComponentActivity() {
                 LaunchedEffect(isDarkTheme) {
                     val (statusBarStyle, navigationBarStyle) = getSystemBarStyles(isDarkTheme)
                     enableEdgeToEdge(
-                        statusBarStyle = statusBarStyle,
-                        navigationBarStyle = navigationBarStyle
+                        statusBarStyle = statusBarStyle
                     )
                 }
 
                 val navController = rememberNavController()
 
-                NavHost(navController = navController, startDestination = Destination.Main.route) {
-                    composable(Destination.Main.route) {
-                        SimpleMediaScreen(
-                            vm = viewModel,
-                            navController = navController,
-                            startService = ::startService
-                        )
-                    }
-                    composable(Destination.Secondary.route) {
-                        SecondaryScreen(vm = viewModel)
+                androidx.compose.foundation.layout.Box(
+                    modifier = androidx.compose.ui.Modifier
+                        .navigationBarsPadding()
+                ) {
+                    NavHost(navController = navController, startDestination = Destination.Main.route) {
+                        composable(Destination.Main.route) {
+                            SimpleMediaScreen(
+                                vm = viewModel,
+                                navController = navController,
+                                startService = ::startService
+                            )
+                        }
+                        composable(Destination.Secondary.route) {
+                            SecondaryScreen(vm = viewModel)
+                        }
                     }
                 }
             }
