@@ -1,6 +1,7 @@
 package com.icecream.simplemediaplayer
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -10,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,18 +22,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.rounded.ArrowForwardIos
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -55,6 +62,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -80,7 +89,6 @@ import com.icecream.simplemediaplayer.util.PermissionHelper
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
-import com.google.android.gms.ads.MobileAds
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
@@ -122,11 +130,6 @@ class MainActivity : ComponentActivity() {
 
     var showNetworkDialog by mutableStateOf(false)
 
-    var showDataRestoreDialog by mutableStateOf(false)
-        private set
-
-    var favoritesToRestore by mutableStateOf<List<String>>(emptyList())
-        private set
 
     private var initialSetupComplete by mutableStateOf(false)
 
@@ -137,6 +140,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val settingsViewModel: SettingsViewModel = hiltViewModel()
+            val stationViewModel: StationViewModel = hiltViewModel()
             val settings by settingsViewModel.settings.collectAsState()
 
             RadioTheme(
@@ -145,31 +149,26 @@ class MainActivity : ComponentActivity() {
             ) {
                 AppRoot(activity = this@MainActivity)
                 PermissionDialogs()
-                DataRestoreDialog(settingsViewModel)
             }
 
-            // 데이터 복원 체크 - 한 번만 실행
+            // webview -> 데이터 복원 체크
             LaunchedEffect(Unit) {
                 val actualSettings = settingsViewModel.settings.drop(1).first()
-                Log.e("MainActivity", "needsDataRestore (actual): ${actualSettings.needsDataRestore}")
+                Log.d("MainActivity", "needsDataRestore (actual): ${actualSettings.needsDataRestore}")
                 if (actualSettings.needsDataRestore != false) {
-                    checkAndRestoreOldFavorites(settingsViewModel)
+                    checkAndRestoreOldFavorites(settingsViewModel, stationViewModel)
                 }
             }
 
-            // 초기 설정 완료 체크 및 광고 활성화
             LaunchedEffect(
                 showNotificationDialog,
                 showBatteryDialog,
                 showSettingsDialog,
-                showDataRestoreDialog,
                 showNetworkDialog
             ) {
-                // 모든 다이얼로그가 닫혔고, 아직 초기 설정이 완료되지 않았으면
                 if (!showNotificationDialog &&
                     !showBatteryDialog &&
                     !showSettingsDialog &&
-                    !showDataRestoreDialog &&
                     !showNetworkDialog &&
                     !initialSetupComplete) {
 
@@ -193,7 +192,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun checkAndRestoreOldFavorites(settingsViewModel: SettingsViewModel) {
+    private fun checkAndRestoreOldFavorites(
+        settingsViewModel: SettingsViewModel,
+        stationViewModel: StationViewModel
+    ) {
         val webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -202,7 +204,7 @@ class MainActivity : ComponentActivity() {
                     super.onPageFinished(view, url)
                     // localStorage에서 favoritesData 가져오기
                     evaluateJavascript("javascript:window.localStorage.getItem('favoritesData')") { value ->
-                        handleLocalStorageResult(value, settingsViewModel)
+                        handleLocalStorageResult(value, settingsViewModel, stationViewModel)
                     }
                 }
             }
@@ -210,10 +212,13 @@ class MainActivity : ComponentActivity() {
         webView.loadUrl("https://radio.yuntae.in/")
     }
 
-    private fun handleLocalStorageResult(value: String?, settingsViewModel: SettingsViewModel) {
-        Log.e("MainActivity", "handleLocalStorageResult: $value")
+    private fun handleLocalStorageResult(
+        value: String?,
+        settingsViewModel: SettingsViewModel,
+        stationViewModel: StationViewModel
+    ) {
+        Log.d("MainActivity", "handleLocalStorageResult: $value")
         if (value.isNullOrEmpty() || value == "null") {
-            // 데이터가 없으면 복원 불필요로 설정
             settingsViewModel.setNeedsDataRestore(false)
             return
         }
@@ -230,10 +235,12 @@ class MainActivity : ComponentActivity() {
             if (favorites.isEmpty()) {
                 settingsViewModel.setNeedsDataRestore(false)
             } else {
-                favoritesToRestore = favorites
-                showDataRestoreDialog = true
+                Log.d("MainActivity", "Auto-restoring ${favorites.size} favorites")
+                stationViewModel.addFavoritesByTitle(favorites)
+                settingsViewModel.setNeedsDataRestore(false)
             }
         } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to restore favorites", e)
             settingsViewModel.setNeedsDataRestore(false)
         }
     }
@@ -278,44 +285,6 @@ class MainActivity : ComponentActivity() {
         return items
     }
 
-    @Composable
-    private fun DataRestoreDialog(settingsViewModel: SettingsViewModel) {
-        if (showDataRestoreDialog) {
-            val stationViewModel: StationViewModel = hiltViewModel()
-
-            AlertDialog(
-                onDismissRequest = { },
-                title = { Text("자주 듣는 스테이션 복원") },
-                text = {
-                    Text("더 쾌적한 경험을 위해 앱 구조가 변경되었습니다.\n\n기존에 저장되어 있던 자주 듣는 스테이션 목록 ${favoritesToRestore.size}개를 불러올까요?")
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        showDataRestoreDialog = false
-                        // 복원 수행
-                        stationViewModel.addFavoritesByTitle(favoritesToRestore)
-                        settingsViewModel.setNeedsDataRestore(false)
-                        favoritesToRestore = emptyList()
-                    }) {
-                        Text("불러오기")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = {
-                        showDataRestoreDialog = false
-                        settingsViewModel.setNeedsDataRestore(false)
-                        favoritesToRestore = emptyList()
-                    }) {
-                        Text("건너뛰기")
-                    }
-                },
-                properties = androidx.compose.ui.window.DialogProperties(
-                    dismissOnBackPress = false,
-                    dismissOnClickOutside = false
-                )
-            )
-        }
-    }
 
     @Composable
     private fun PermissionDialogs() {
@@ -981,6 +950,157 @@ private fun SettingsScreen(settingsViewModel: SettingsViewModel) {
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
             )
         }
+
+        item {
+            val context = LocalContext.current
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        val uri = Uri.parse("https://play.google.com/store/apps/details?id=com.icecream.simplemediaplayer")
+                        val intent = Intent(Intent.ACTION_VIEW, uri)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    }
+                    .padding(vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "리뷰 남기기",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Icon(
+                    imageVector = Icons.Rounded.ArrowForwardIos,
+                    contentDescription = "링크 열기",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+
+        item {
+            val context = LocalContext.current
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        val uri = Uri.parse("mailto:hey@yuntae.in?subject=[라디오 앱 문의]")
+                        val intent = Intent(Intent.ACTION_VIEW, uri)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    }
+                    .padding(vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "개발자에게 문의하기",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Icon(
+                    imageVector = Icons.Rounded.ArrowForwardIos,
+                    contentDescription = "링크 열기",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+
+        item {
+            val context = LocalContext.current
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        val uri = Uri.parse("https://radio.yuntae.in/settings/faq?showUi=0")
+                        val intent = Intent(Intent.ACTION_VIEW, uri)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    }
+                    .padding(vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "자주 묻는 질문",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Icon(
+                    imageVector = Icons.Rounded.ArrowForwardIos,
+                    contentDescription = "링크 열기",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+
+        item {
+            val context = LocalContext.current
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        val uri = Uri.parse("https://radio.yuntae.in/settings/notice?showUi=0")
+                        val intent = Intent(Intent.ACTION_VIEW, uri)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    }
+                    .padding(vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "공지사항",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Icon(
+                    imageVector = Icons.Rounded.ArrowForwardIos,
+                    contentDescription = "링크 열기",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+
+        item {
+            val context = LocalContext.current
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        val uri = Uri.parse("https://radio.yuntae.in/settings/privacy?showUi=0")
+                        val intent = Intent(Intent.ACTION_VIEW, uri)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    }
+                    .padding(vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "개인정보 처리방침",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Icon(
+                    imageVector = Icons.Rounded.ArrowForwardIos,
+                    contentDescription = "링크 열기",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+
 
 
     }

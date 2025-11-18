@@ -130,6 +130,12 @@ class RadioPlayerController @Inject constructor(
     fun updateStations(stations: List<RadioStation>, activeStationUrl: String? = null) {
         if (stations.isNotEmpty()) {
             val mediaItems = stations.mapIndexed { index, station ->
+                val artworkUri = if (!station.artwork.isNullOrEmpty()) {
+                    Uri.parse(station.artwork)
+                } else {
+                    Uri.parse("https://i.imgur.com/u7N8nbD.png")
+                }
+
                 MediaItem.Builder()
                     .setUri(baseUrl + station.url)
                     .setMediaId(station.url)
@@ -141,7 +147,7 @@ class RadioPlayerController @Inject constructor(
                             .setIsPlayable(true)
                             .setIsBrowsable(false)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-                            .setArtworkUri(Uri.parse("https://i.imgur.com/u7N8nbD.png"))
+                            .setArtworkUri(artworkUri)
                             .setExtras(Bundle().apply { putInt(KEY_LIST_INDEX, index) })
                             .build()
                     )
@@ -160,36 +166,93 @@ class RadioPlayerController @Inject constructor(
         }
     }
 
-    fun playStream(title: String, url: String) {
-        val relId = relativeId(url)
-        val existingIndex = (0 until exoPlayer.mediaItemCount).firstOrNull { exoPlayer.getMediaItemAt(it).mediaId == relId }
+    fun playStationByUrl(stationUrl: String) {
+        val relId = relativeId(stationUrl)
+        val existingIndex = (0 until exoPlayer.mediaItemCount).firstOrNull {
+            exoPlayer.getMediaItemAt(it).mediaId == relId
+        }
         if (existingIndex != null) {
             exoPlayer.seekTo(existingIndex, C.TIME_UNSET)
             exoPlayer.playWhenReady = true
-            return
+        } else {
+            android.util.Log.w("RadioPlayerController", "Station $stationUrl not in current playlist")
         }
-        val mediaItem = MediaItem.Builder()
-            .setUri(if (url.startsWith(baseUrl)) url else baseUrl + relId)
-            .setMediaId(relId)
-            .setMimeType(MimeTypes.APPLICATION_M3U8)
-            .setLiveConfiguration(
-                MediaItem.LiveConfiguration.Builder()
-                    .setMaxPlaybackSpeed(1.0f)
-                    .build()
-            )
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(title)
-                    .setArtist("라디오 스트리밍 중")
-                    .setIsPlayable(true)
-                    .setIsBrowsable(false)
-                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-                    .build()
-            )
-            .build()
-        exoPlayer.setMediaItem(mediaItem)
+    }
+
+    fun hasMediaItem(mediaId: String): Boolean {
+        val relId = relativeId(mediaId)
+        return (0 until exoPlayer.mediaItemCount).any { exoPlayer.getMediaItemAt(it).mediaId == relId }
+    }
+
+    fun setPlaylistAndPlay(stations: List<RadioStation>, targetUrl: String) {
+        if (stations.isEmpty()) return
+        val mediaItems = stations.mapIndexed { index, station ->
+            val artworkUri = if (!station.artwork.isNullOrEmpty()) {
+                Uri.parse(station.artwork)
+            } else {
+                Uri.parse("https://i.imgur.com/u7N8nbD.png")
+            }
+            MediaItem.Builder()
+                .setUri(baseUrl + station.url)
+                .setMediaId(station.url)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(station.title)
+                        .setSubtitle(station.city)
+                        .setArtist("라디오 스트리밍 중")
+                        .setIsPlayable(true)
+                        .setIsBrowsable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                        .setArtworkUri(artworkUri)
+                        .setExtras(Bundle().apply { putInt(KEY_LIST_INDEX, index) })
+                        .build()
+                )
+                .setMimeType(MimeTypes.APPLICATION_M3U8)
+                .setLiveConfiguration(
+                    MediaItem.LiveConfiguration.Builder().setMaxPlaybackSpeed(1.0f).build()
+                )
+                .build()
+        }
+        val desiredIndex = mediaItems.indexOfFirst { it.mediaId == targetUrl }.let { if (it >= 0) it else 0 }
+        exoPlayer.setMediaItems(mediaItems, desiredIndex, C.TIME_UNSET)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
+    }
+
+    /**
+     * Update current media item's artist field. If artist is null or blank, set default.
+     */
+    fun updateCurrentArtist(artist: String?) {
+        val index = exoPlayer.currentMediaItemIndex
+        if (index == C.INDEX_UNSET || exoPlayer.mediaItemCount == 0) return
+        val current = exoPlayer.getMediaItemAt(index)
+        val defaultArtist = artist?.takeIf { it.isNotBlank() } ?: "라디오 스트리밍 중"
+
+        val oldMeta = current.mediaMetadata
+        val newMeta = MediaMetadata.Builder()
+            .setTitle(oldMeta.title)
+            .setSubtitle(oldMeta.subtitle)
+            .setArtist(defaultArtist)
+            .setArtworkUri(oldMeta.artworkUri)
+            .setIsPlayable(oldMeta.isPlayable)
+            .setIsBrowsable(oldMeta.isBrowsable)
+            .setMediaType(oldMeta.mediaType)
+            .setExtras(oldMeta.extras)
+            .build()
+
+        val newItem = MediaItem.Builder()
+            .setMediaId(current.mediaId)
+            .setMediaMetadata(newMeta)
+            .apply {
+                current.localConfiguration?.let { lc ->
+                    setUri(lc.uri)
+                    lc.mimeType?.let { setMimeType(it) }
+                }
+                current.liveConfiguration?.let { setLiveConfiguration(it) }
+            }
+            .build()
+
+        exoPlayer.replaceMediaItem(index, newItem)
     }
 
     fun playPrev() {

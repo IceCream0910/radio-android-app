@@ -25,7 +25,6 @@ class AppOpenAdManager(
     private var loadTime: Long = 0
     private var currentActivity: Activity? = null
 
-    // 광고 표시를 제어하기 위한 플래그
     var canShowAd = false
         private set
 
@@ -34,7 +33,6 @@ class AppOpenAdManager(
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
     }
 
-    /** 광고 로드 시작 */
     fun loadAd() {
         if (isLoadingAd || isAdAvailable()) {
             return
@@ -52,7 +50,6 @@ class AppOpenAdManager(
                     appOpenAd = ad
                     isLoadingAd = false
                     loadTime = Date().time
-                    Log.d(TAG, "App Open Ad loaded successfully")
                 }
 
                 override fun onAdFailedToLoad(loadAdError: LoadAdError) {
@@ -63,30 +60,24 @@ class AppOpenAdManager(
         )
     }
 
-    /** 광고 표시 허용 설정 */
     fun enableAdShowing() {
         canShowAd = true
-        Log.d(TAG, "Ad showing enabled")
     }
 
-    /** 광고가 4시간 이내에 로드되었는지 확인 */
     private fun wasLoadTimeLessThanNHoursAgo(numHours: Long): Boolean {
         val dateDifference: Long = Date().time - loadTime
         val numMilliSecondsPerHour: Long = 3600000
         return dateDifference < numMilliSecondsPerHour * numHours
     }
 
-    /** 사용 가능한 광고가 있는지 확인 */
     private fun isAdAvailable(): Boolean {
         return appOpenAd != null && wasLoadTimeLessThanNHoursAgo(4)
     }
 
-    /** 광고 표시 */
     fun showAdIfAvailable(activity: Activity) {
-        // 조건 체크: 광고 표시 허용되지 않았거나, 이미 표시 중이거나, 사용 가능한 광고가 없으면 반환
         if (!canShowAd) {
             Log.d(TAG, "Ad showing not enabled yet")
-            loadAd() // 다음을 위해 미리 로드
+            loadAd()
             return
         }
 
@@ -99,7 +90,7 @@ class AppOpenAdManager(
         appOpenAd?.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdDismissedFullScreenContent() {
                 appOpenAd = null
-                loadAd() // 다음 광고 미리 로드
+                loadAd()
                 Log.d(TAG, "App Open Ad dismissed")
             }
 
@@ -117,7 +108,6 @@ class AppOpenAdManager(
         appOpenAd?.show(activity)
     }
 
-    // DefaultLifecycleObserver - called when app moves to foreground
     override fun onStart(owner: LifecycleOwner) {
         super.onStart(owner)
         currentActivity?.let { activity ->
@@ -125,7 +115,6 @@ class AppOpenAdManager(
         }
     }
 
-    // ActivityLifecycleCallbacks
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
 
     override fun onActivityStarted(activity: Activity) {

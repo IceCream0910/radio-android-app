@@ -65,12 +65,10 @@ class RadioService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
 
-        // 앱 시작 시 라디오 스테이션 데이터를 미리 로드
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 repository.fetchStations()
             } catch (e: Exception) {
-                // 로드 실패 시 로그만 출력
                 android.util.Log.e("RadioService", "Failed to load stations", e)
             }
         }
@@ -398,8 +396,8 @@ class RadioService : MediaLibraryService() {
                         .setTitle(station.title)
                         .setSubtitle(station.city)
                         .setArtist("라디오 스트리밍 중")
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-                        .setArtworkUri(Uri.parse("https://i.imgur.com/u7N8nbD.png"))
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION)
+                        .setArtworkUri(Uri.parse(station.artwork ?: "https://i.imgur.com/u7N8nbD.png"))
                         .setIsPlayable(true)
                         .setIsBrowsable(false)
                         .build()

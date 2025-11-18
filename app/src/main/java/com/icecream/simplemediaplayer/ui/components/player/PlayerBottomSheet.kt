@@ -1,17 +1,14 @@
 package com.icecream.simplemediaplayer.ui.components.player
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bedtime
-import androidx.compose.material.icons.filled.BedtimeOff
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.BedtimeOff
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -20,17 +17,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.AdSize
-import com.google.android.gms.ads.AdView
-import com.icecream.simplemediaplayer.AdMobBanner
+import coil.compose.AsyncImage
 import com.icecream.simplemediaplayer.ui.PlayerUiState
 import com.icecream.simplemediaplayer.ui.SleepTimerState
 import kotlinx.coroutines.launch
@@ -219,7 +212,7 @@ private fun ExpandedPlayerContent(
 
             Spacer(modifier = Modifier.height(40.dp))
 
-            // Album art placeholder / Station info
+            // Album art / Station artwork
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -235,16 +228,27 @@ private fun ExpandedPlayerContent(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Radio,
-                        contentDescription = null,
-                        modifier = Modifier.size(120.dp),
-                        tint = primaryColor.copy(alpha = 0.6f)
+                val artworkUrl = playerState.currentStation?.artwork
+
+                if (!artworkUrl.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = artworkUrl,
+                        contentDescription = "Station artwork",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
                     )
+                } else {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Radio,
+                            contentDescription = null,
+                            modifier = Modifier.size(120.dp),
+                            tint = primaryColor.copy(alpha = 0.6f)
+                        )
+                    }
                 }
             }
 
@@ -410,31 +414,12 @@ private fun ExpandedPlayerContent(
                 }
             }
 
-            AdMobBanner(
+            com.icecream.simplemediaplayer.AdMobBanner(
                 modifier = Modifier
                     .padding(top = 24.dp)
                     .navigationBarsPadding()
             )
-
-
         }
     }
-}
-
-@Composable
-fun AdMobBanner(
-    modifier: Modifier = Modifier,
-    adUnitId: String = "ca-app-pub-7178712602934912/8801591425" // Demo ad unit ID: ca-app-pub-3940256099942544/9214589741
-) {
-    AndroidView(
-        modifier = modifier.fillMaxWidth(),
-        factory = { context ->
-            AdView(context).apply {
-                setAdSize(AdSize.FLUID)
-                setAdUnitId(adUnitId)
-                loadAd(AdRequest.Builder().build())
-            }
-        }
-    )
 }
 

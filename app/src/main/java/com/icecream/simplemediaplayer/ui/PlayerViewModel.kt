@@ -72,6 +72,7 @@ class PlayerViewModel @Inject @UnstableApi constructor(
             playerController.playerState.collectLatest { playerState ->
                 val resolvedStation =
                     findStationByUrl(playerState.stationUrl) ?: _state.value.currentStation
+
                 _state.update {
                     val isFavorite = resolvedStation?.url?.let(favoriteUrls::contains) ?: false
                     it.copy(
@@ -120,6 +121,9 @@ class PlayerViewModel @Inject @UnstableApi constructor(
                 startSongRefresh(it.song)
             }
         }
+
+        // Update media session artist to default when station changes (until program fetched)
+        playerController.updateCurrentArtist(null)
     }
 
     private fun startProgramRefresh(programUrl: String) {
@@ -129,6 +133,8 @@ class PlayerViewModel @Inject @UnstableApi constructor(
 
             radioRepository.fetchProgramInfo(fullUrl).onSuccess { programInfo ->
                 _state.update { it.copy(programTitle = programInfo.title) }
+                // Reflect program title to media session artist
+                playerController.updateCurrentArtist(programInfo.title)
             }.onFailure { e ->
                 android.util.Log.e("PlayerViewModel", "Failed to fetch program info", e)
             }
@@ -150,6 +156,7 @@ class PlayerViewModel @Inject @UnstableApi constructor(
                 // 다음 갱신 실행
                 radioRepository.fetchProgramInfo(fullUrl).onSuccess { programInfo ->
                     _state.update { it.copy(programTitle = programInfo.title) }
+                    playerController.updateCurrentArtist(programInfo.title)
                 }.onFailure { e ->
                     android.util.Log.e("PlayerViewModel", "Failed to fetch program info", e)
                 }
@@ -162,7 +169,6 @@ class PlayerViewModel @Inject @UnstableApi constructor(
             val baseUrl = "https://radio.yuntae.in"
             val fullUrl = baseUrl + songUrl
 
-            // 즉시 첫 fetch 실행
             radioRepository.fetchSongInfo(fullUrl).onSuccess { songInfo ->
                 val newSongValue = songInfo.song
                 lastSongValue = newSongValue
@@ -171,7 +177,6 @@ class PlayerViewModel @Inject @UnstableApi constructor(
                 android.util.Log.e("PlayerViewModel", "Failed to fetch song info", e)
             }
 
-            // 30초 단위로 갱신
             while (true) {
                 delay(30_000)
 
@@ -187,7 +192,6 @@ class PlayerViewModel @Inject @UnstableApi constructor(
                 radioRepository.fetchSongInfo(fullUrl).onSuccess { songInfo ->
                     val newSongValue = songInfo.song
 
-                    // 곡이 변경되었으면 타임스탬프 갱신
                     if (lastSongValue != null && lastSongValue != newSongValue) {
                         songChangeTimestamp = currentTime
                     }
@@ -240,25 +244,49 @@ class PlayerViewModel @Inject @UnstableApi constructor(
     }
 
     private fun findStationByUrl(url: String?, stations: List<RadioStation> = _currentStations.value): RadioStation? {
-        if (url.isNullOrEmpty()) return null
-        return stations.firstOrNull { it.url == url }
+        val found = stations.firstOrNull { it.url == url }
+        return found
     }
 
     fun setCurrentStations(stations: List<RadioStation>) {
         if (stations.isEmpty()) return
-        if (_state.value.isPlaying || _state.value.currentStation != null) return
         if (stations == _currentStations.value) return
+
         _currentStations.value = stations
-        playerController.updateStations(stations, activeStationUrl = _state.value.currentStation?.url)
+
+        if (!_state.value.isPlaying && _state.value.currentStation == null) {
+            playerController.updateStations(stations, activeStationUrl = null)
+        }
     }
 
     private fun playStation(station: RadioStation, autostart: Boolean = false) {
+        android.util.Log.d("PlayerViewModel", "playStation: ${station.title}, artwork=${station.artwork}")
+
         ensureServiceRunning()
-        if (_currentStations.value.isEmpty()) {
-            _currentStations.value = listOf(station)
-            playerController.updateStations(_currentStations.value)
+        val currentList = _currentStations.value
+        val stationInList = currentList.any { it.url == station.url }
+
+        // If station not in current playlist OR playlist size is 1 while we likely changed city -> rebuild playlist with new city's stations including this station
+        if (!stationInList) {
+            android.util.Log.d("PlayerViewModel", "playStation: station not in current list -> rebuilding playlist")
+            val rebuilt = if (currentList.isNotEmpty()) {
+                // Attempt to find stations from repository grouped by city
+                val all = radioRepository.getAllStations()
+                val sameCity = all.filter { it.city == station.city }
+                if (sameCity.isNotEmpty()) sameCity else listOf(station)
+            } else listOf(station)
+            _currentStations.value = rebuilt
+            playerController.setPlaylistAndPlay(rebuilt, station.url)
+        } else {
+            // Station exists in current list: seek
+            if (!playerController.hasMediaItem(station.url)) {
+                android.util.Log.d("PlayerViewModel", "playStation: media item missing in ExoPlayer -> resetting playlist")
+                playerController.setPlaylistAndPlay(currentList, station.url)
+            } else {
+                playerController.playStationByUrl("https://radio.yuntae.in" + station.url)
+            }
         }
-        playerController.playStream(station.title, "https://radio.yuntae.in" + station.url)
+
         if (!autostart) {
             val isFavorite = station.url.let(favoriteUrls::contains)
             _state.update { it.copy(currentStation = station, isPlaying = true, isFavorite = isFavorite) }
