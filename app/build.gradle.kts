@@ -14,8 +14,8 @@ android {
         applicationId = "com.icecream.simplemediaplayer"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 10
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -54,6 +54,9 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
@@ -84,6 +87,7 @@ dependencies {
 
     implementation(libs.javax.inject)
     implementation(libs.androidx.material)
+    implementation(libs.playServicesAds)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

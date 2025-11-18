@@ -3,6 +3,9 @@ package com.icecream.simplemediaplayer
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -54,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.ActivityCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
@@ -73,7 +77,13 @@ import com.icecream.simplemediaplayer.ui.components.StationListItem
 import com.icecream.simplemediaplayer.ui.navigation.BottomNavDestinations
 import com.icecream.simplemediaplayer.ui.theme.RadioTheme
 import com.icecream.simplemediaplayer.util.PermissionHelper
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdSize
+import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.MobileAds
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 
 @UnstableApi
 @AndroidEntryPoint
@@ -112,9 +122,19 @@ class MainActivity : ComponentActivity() {
 
     var showNetworkDialog by mutableStateOf(false)
 
+    var showDataRestoreDialog by mutableStateOf(false)
+        private set
+
+    var favoritesToRestore by mutableStateOf<List<String>>(emptyList())
+        private set
+
+    private var initialSetupComplete by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+
         setContent {
             val settingsViewModel: SettingsViewModel = hiltViewModel()
             val settings by settingsViewModel.settings.collectAsState()
@@ -125,6 +145,39 @@ class MainActivity : ComponentActivity() {
             ) {
                 AppRoot(activity = this@MainActivity)
                 PermissionDialogs()
+                DataRestoreDialog(settingsViewModel)
+            }
+
+            // 데이터 복원 체크 - 한 번만 실행
+            LaunchedEffect(Unit) {
+                val actualSettings = settingsViewModel.settings.drop(1).first()
+                Log.e("MainActivity", "needsDataRestore (actual): ${actualSettings.needsDataRestore}")
+                if (actualSettings.needsDataRestore != false) {
+                    checkAndRestoreOldFavorites(settingsViewModel)
+                }
+            }
+
+            // 초기 설정 완료 체크 및 광고 활성화
+            LaunchedEffect(
+                showNotificationDialog,
+                showBatteryDialog,
+                showSettingsDialog,
+                showDataRestoreDialog,
+                showNetworkDialog
+            ) {
+                // 모든 다이얼로그가 닫혔고, 아직 초기 설정이 완료되지 않았으면
+                if (!showNotificationDialog &&
+                    !showBatteryDialog &&
+                    !showSettingsDialog &&
+                    !showDataRestoreDialog &&
+                    !showNetworkDialog &&
+                    !initialSetupComplete) {
+
+                    initialSetupComplete = true
+                    // 앱 오프닝 광고 활성화
+                    (application as? RadioApp)?.appOpenAdManager?.enableAdShowing()
+                    Log.d("MainActivity", "Initial setup complete, app open ad enabled")
+                }
             }
         }
         checkPermissions()
@@ -137,6 +190,130 @@ class MainActivity : ComponentActivity() {
             if (!PermissionHelper.isBatteryOptimizationDisabled(this)) {
                 showBatteryDialog = true
             }
+        }
+    }
+
+    private fun checkAndRestoreOldFavorites(settingsViewModel: SettingsViewModel) {
+        val webView = WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    // localStorage에서 favoritesData 가져오기
+                    evaluateJavascript("javascript:window.localStorage.getItem('favoritesData')") { value ->
+                        handleLocalStorageResult(value, settingsViewModel)
+                    }
+                }
+            }
+        }
+        webView.loadUrl("https://radio.yuntae.in/")
+    }
+
+    private fun handleLocalStorageResult(value: String?, settingsViewModel: SettingsViewModel) {
+        Log.e("MainActivity", "handleLocalStorageResult: $value")
+        if (value.isNullOrEmpty() || value == "null") {
+            // 데이터가 없으면 복원 불필요로 설정
+            settingsViewModel.setNeedsDataRestore(false)
+            return
+        }
+
+        try {
+            val jsonString = value.trim('"').replace("\\\"", "\"")
+            if (jsonString.isEmpty() || jsonString == "null") {
+                settingsViewModel.setNeedsDataRestore(false)
+                return
+            }
+
+            val favorites = parseJsonArray(jsonString)
+
+            if (favorites.isEmpty()) {
+                settingsViewModel.setNeedsDataRestore(false)
+            } else {
+                favoritesToRestore = favorites
+                showDataRestoreDialog = true
+            }
+        } catch (e: Exception) {
+            settingsViewModel.setNeedsDataRestore(false)
+        }
+    }
+
+    private fun parseJsonArray(jsonString: String): List<String> {
+        if (!jsonString.startsWith("[") || !jsonString.endsWith("]")) {
+            return emptyList()
+        }
+
+        val content = jsonString.substring(1, jsonString.length - 1)
+        if (content.isEmpty()) {
+            return emptyList()
+        }
+
+        val items = mutableListOf<String>()
+        var current = StringBuilder()
+        var inString = false
+        var escaped = false
+
+        for (char in content) {
+            when {
+                escaped -> {
+                    current.append(char)
+                    escaped = false
+                }
+                char == '\\' -> {
+                    escaped = true
+                }
+                char == '"' -> {
+                    if (inString) {
+                        items.add(current.toString())
+                        current = StringBuilder()
+                    }
+                    inString = !inString
+                }
+                inString -> {
+                    current.append(char)
+                }
+            }
+        }
+
+        return items
+    }
+
+    @Composable
+    private fun DataRestoreDialog(settingsViewModel: SettingsViewModel) {
+        if (showDataRestoreDialog) {
+            val stationViewModel: StationViewModel = hiltViewModel()
+
+            AlertDialog(
+                onDismissRequest = { },
+                title = { Text("자주 듣는 스테이션 복원") },
+                text = {
+                    Text("더 쾌적한 경험을 위해 앱 구조가 변경되었습니다.\n\n기존에 저장되어 있던 자주 듣는 스테이션 목록 ${favoritesToRestore.size}개를 불러올까요?")
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showDataRestoreDialog = false
+                        // 복원 수행
+                        stationViewModel.addFavoritesByTitle(favoritesToRestore)
+                        settingsViewModel.setNeedsDataRestore(false)
+                        favoritesToRestore = emptyList()
+                    }) {
+                        Text("불러오기")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showDataRestoreDialog = false
+                        settingsViewModel.setNeedsDataRestore(false)
+                        favoritesToRestore = emptyList()
+                    }) {
+                        Text("건너뛰기")
+                    }
+                },
+                properties = androidx.compose.ui.window.DialogProperties(
+                    dismissOnBackPress = false,
+                    dismissOnClickOutside = false
+                )
+            )
         }
     }
 
@@ -463,6 +640,10 @@ private fun HomeScreen(
             onSelect = stationViewModel::selectCity
         )
 
+        AdMobBanner(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+
         val currentList =
             if (ui.selectedCity == null) emptyList() else ui.groupedStations[ui.selectedCity].orEmpty()
 
@@ -490,13 +671,22 @@ private fun FavoritesScreen(
     val ui by stationViewModel.state.collectAsState()
     val playerState by playerViewModel.state.collectAsState()
     val allStations = ui.groupedStations.values.flatten()
-    val favList = allStations.filter { ui.favorites.contains(it.url) }
+    val favList = allStations
+        .filter { ui.favorites.contains(it.url) }
+        // URL을 기준으로 중복 제거
+        .associateBy { it.url }
+        .values
+        .toList()
 
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
             text = "자주 듣는",
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
             modifier = Modifier.padding(16.dp)
+        )
+
+        AdMobBanner(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
 
         LaunchedEffect(favList) {
@@ -638,7 +828,16 @@ private fun SettingsScreen(settingsViewModel: SettingsViewModel) {
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 modifier = Modifier.padding(bottom = 16.dp)
             )
+
+            AdMobBanner(
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+            )
+
+
         }
+
+        item { Spacer(modifier = Modifier.height(16.dp)) }
+
 
         // 테마 설정
         item {
@@ -787,4 +986,21 @@ private fun SettingsScreen(settingsViewModel: SettingsViewModel) {
     }
 }
 
-
+@Composable
+fun AdMobBanner(
+    modifier: Modifier = Modifier,
+    adUnitId: String = "ca-app-pub-7178712602934912/8801591425" // Demo ad unit ID: ca-app-pub-3940256099942544/9214589741
+) {
+    AndroidView(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(50.dp),
+        factory = { context ->
+            AdView(context).apply {
+                setAdSize(AdSize.BANNER)
+                setAdUnitId(adUnitId)
+                loadAd(AdRequest.Builder().build())
+            }
+        }
+    )
+}

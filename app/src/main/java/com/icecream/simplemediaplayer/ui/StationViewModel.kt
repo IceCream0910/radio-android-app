@@ -68,6 +68,18 @@ class StationViewModel @Inject constructor(
         }
     }
 
+    fun addFavoritesByTitle(titles: List<String>) {
+        viewModelScope.launch {
+            val allStations = _state.value.groupedStations.values.flatten()
+            val urlsToAdd = titles.mapNotNull { title ->
+                allStations.find { station -> station.title == title }?.url
+            }
+            if (urlsToAdd.isNotEmpty()) {
+                favoritesDataSource.addFavorites(urlsToAdd)
+            }
+        }
+    }
+
     fun currentStations(): List<RadioStation> {
         val currentCity = _state.value.selectedCity
         return currentCity?.let { _state.value.groupedStations[it].orEmpty() } ?: emptyList()

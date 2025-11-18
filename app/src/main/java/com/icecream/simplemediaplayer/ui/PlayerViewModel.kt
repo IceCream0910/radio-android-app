@@ -98,11 +98,9 @@ class PlayerViewModel @Inject @UnstableApi constructor(
     }
 
     private fun onStationChanged(station: RadioStation?) {
-        // Cancel existing refresh jobs
         programRefreshJob?.cancel()
         songRefreshJob?.cancel()
 
-        // Record to recent stations
         station?.url?.let { url ->
             viewModelScope.launch {
                 recentStationsDataSource.addRecentStation(url)
@@ -112,7 +110,6 @@ class PlayerViewModel @Inject @UnstableApi constructor(
         lastSongValue = null
         songChangeTimestamp = 0L
 
-        // Clear existing data
         _state.update { it.copy(programTitle = null, songTitle = null) }
 
         station?.let {
@@ -130,13 +127,13 @@ class PlayerViewModel @Inject @UnstableApi constructor(
             val baseUrl = "https://radio.yuntae.in"
             val fullUrl = baseUrl + programUrl
 
-            while (true) {
-                // Fetch program info
-                radioRepository.fetchProgramInfo(fullUrl).onSuccess { programInfo ->
-                    _state.update { it.copy(programTitle = programInfo.title) }
-                }
+            radioRepository.fetchProgramInfo(fullUrl).onSuccess { programInfo ->
+                _state.update { it.copy(programTitle = programInfo.title) }
+            }.onFailure { e ->
+                android.util.Log.e("PlayerViewModel", "Failed to fetch program info", e)
+            }
 
-                // 5분 단위로 갱신
+            while (true) {
                 val now = LocalTime.now()
                 val currentMinutes = now.minute
                 val nextRefreshMinutes = ((currentMinutes / 5) + 1) * 5
@@ -149,6 +146,13 @@ class PlayerViewModel @Inject @UnstableApi constructor(
                 val totalSecondsToWait = (minutesToWait * 60 + secondsToWait).toLong()
 
                 delay(totalSecondsToWait * 1000)
+
+                // 다음 갱신 실행
+                radioRepository.fetchProgramInfo(fullUrl).onSuccess { programInfo ->
+                    _state.update { it.copy(programTitle = programInfo.title) }
+                }.onFailure { e ->
+                    android.util.Log.e("PlayerViewModel", "Failed to fetch program info", e)
+                }
             }
         }
     }
@@ -158,29 +162,41 @@ class PlayerViewModel @Inject @UnstableApi constructor(
             val baseUrl = "https://radio.yuntae.in"
             val fullUrl = baseUrl + songUrl
 
+            // 즉시 첫 fetch 실행
+            radioRepository.fetchSongInfo(fullUrl).onSuccess { songInfo ->
+                val newSongValue = songInfo.song
+                lastSongValue = newSongValue
+                _state.update { it.copy(songTitle = newSongValue) }
+            }.onFailure { e ->
+                android.util.Log.e("PlayerViewModel", "Failed to fetch song info", e)
+            }
+
+            // 30초 단위로 갱신
             while (true) {
-                // 이전과 달라지면 2분간 갱신 중단
+                delay(30_000)
+
                 val currentTime = System.currentTimeMillis()
                 val timeSinceChange = currentTime - songChangeTimestamp
-                val twoMinutesInMillis = 2 * 60 * 1000L
+                val oneMinuteInMillis = 1 * 60 * 1000L
 
-                if (songChangeTimestamp == 0L || timeSinceChange >= twoMinutesInMillis) {
-                    // Fetch song info
-                    radioRepository.fetchSongInfo(fullUrl).onSuccess { songInfo ->
-                        val newSongValue = songInfo.song
-
-                        // Check if song changed
-                        if (lastSongValue != null && lastSongValue != newSongValue) {
-                            // Song changed, start 2-minute pause
-                            songChangeTimestamp = currentTime
-                        }
-
-                        lastSongValue = newSongValue
-                        _state.update { it.copy(songTitle = newSongValue) }
-                    }
+                // 곡이 바뀐 지 1분이 지나지 않았으면 갱신 스킵
+                if (songChangeTimestamp != 0L && timeSinceChange < oneMinuteInMillis) {
+                    continue
                 }
 
-                delay(30_000)
+                radioRepository.fetchSongInfo(fullUrl).onSuccess { songInfo ->
+                    val newSongValue = songInfo.song
+
+                    // 곡이 변경되었으면 타임스탬프 갱신
+                    if (lastSongValue != null && lastSongValue != newSongValue) {
+                        songChangeTimestamp = currentTime
+                    }
+
+                    lastSongValue = newSongValue
+                    _state.update { it.copy(songTitle = newSongValue) }
+                }.onFailure { e ->
+                    android.util.Log.e("PlayerViewModel", "Failed to fetch song info", e)
+                }
             }
         }
     }

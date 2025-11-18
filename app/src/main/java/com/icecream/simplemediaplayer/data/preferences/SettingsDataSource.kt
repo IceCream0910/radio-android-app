@@ -26,13 +26,15 @@ class SettingsDataSource @Inject constructor(
     private val startTabKey = stringPreferencesKey("start_tab")
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val uiScaleKey = floatPreferencesKey("ui_scale")
+    private val needsDataRestoreKey = booleanPreferencesKey("needs_data_restore")
 
     val settings: Flow<AppSettings> = dataStore.data.map { prefs ->
         AppSettings(
             autoPlayOnStart = prefs[autoPlayKey] ?: false,
             startTab = prefs[startTabKey] ?: StartTab.HOME.value,
             themeMode = prefs[themeModeKey] ?: ThemeMode.SYSTEM.value,
-            uiScale = prefs[uiScaleKey] ?: 1.0f
+            uiScale = prefs[uiScaleKey] ?: 1.0f,
+            needsDataRestore = prefs[needsDataRestoreKey]
         )
     }
 
@@ -59,13 +61,20 @@ class SettingsDataSource @Inject constructor(
             prefs[uiScaleKey] = scale
         }
     }
+
+    suspend fun setNeedsDataRestore(needs: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[needsDataRestoreKey] = needs
+        }
+    }
 }
 
 data class AppSettings(
     val autoPlayOnStart: Boolean = false,
     val startTab: String = StartTab.HOME.value,
     val themeMode: String = ThemeMode.SYSTEM.value,
-    val uiScale: Float = 1.0f
+    val uiScale: Float = 1.0f,
+    val needsDataRestore: Boolean? = true
 )
 
 enum class StartTab(val value: String, val displayName: String) {

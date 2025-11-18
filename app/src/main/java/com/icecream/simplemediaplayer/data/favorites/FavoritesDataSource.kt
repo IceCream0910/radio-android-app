@@ -30,4 +30,11 @@ class FavoritesDataSource @Inject constructor(
             prefs[favoritesKey] = if (current.contains(url)) current - url else current + url
         }
     }
+
+    suspend fun addFavorites(urls: List<String>) {
+        dataStore.edit { prefs ->
+            val current = prefs[favoritesKey] ?: emptySet()
+            prefs[favoritesKey] = current + urls.toSet()
+        }
+    }
 }

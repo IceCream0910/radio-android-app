@@ -48,5 +48,11 @@ class SettingsViewModel @Inject constructor(
             settingsDataSource.setUiScale(scale)
         }
     }
+
+    fun setNeedsDataRestore(needs: Boolean) {
+        viewModelScope.launch {
+            settingsDataSource.setNeedsDataRestore(needs)
+        }
+    }
 }
 
