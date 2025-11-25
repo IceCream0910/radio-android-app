@@ -464,6 +464,11 @@ private fun AppRoot(activity: MainActivity) {
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
+            topBar = {
+                AdMobBanner(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            },
             bottomBar = {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     val playerState by playerViewModel.state.collectAsState()
@@ -609,10 +614,6 @@ private fun HomeScreen(
             onSelect = stationViewModel::selectCity
         )
 
-        AdMobBanner(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
-
         val currentList =
             if (ui.selectedCity == null) emptyList() else ui.groupedStations[ui.selectedCity].orEmpty()
 
@@ -652,10 +653,6 @@ private fun FavoritesScreen(
             text = "자주 듣는",
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
             modifier = Modifier.padding(16.dp)
-        )
-
-        AdMobBanner(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
 
         LaunchedEffect(favList) {
@@ -797,15 +794,7 @@ private fun SettingsScreen(settingsViewModel: SettingsViewModel) {
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 modifier = Modifier.padding(bottom = 16.dp)
             )
-
-            AdMobBanner(
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
-            )
-
-
         }
-
-        item { Spacer(modifier = Modifier.height(16.dp)) }
 
 
         // 테마 설정

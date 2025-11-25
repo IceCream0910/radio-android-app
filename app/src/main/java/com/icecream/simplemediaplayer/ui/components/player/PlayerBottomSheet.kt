@@ -413,12 +413,6 @@ private fun ExpandedPlayerContent(
                     }
                 }
             }
-
-            com.icecream.simplemediaplayer.AdMobBanner(
-                modifier = Modifier
-                    .padding(top = 24.dp)
-                    .navigationBarsPadding()
-            )
         }
     }
 }
