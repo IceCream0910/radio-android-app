@@ -79,7 +79,9 @@ class PlayerViewModel @Inject @UnstableApi constructor(
                         currentStation = resolvedStation,
                         isPlaying = playerState.isPlaying,
                         isBuffering = playerState.isBuffering,
-                        isFavorite = isFavorite
+                        isFavorite = isFavorite,
+                        hasPrev = playerState.hasPrev,
+                        hasNext = playerState.hasNext
                     )
                 }
 
@@ -215,7 +217,7 @@ class PlayerViewModel @Inject @UnstableApi constructor(
                 stored.queue.firstOrNull { it.url == url }
             } ?: _state.value.currentStation
             if (targetStation != null && autoPlay) {
-                playStation(targetStation, autostart = true)
+                playStation(targetStation, playlist = _currentStations.value, autostart = true)
             }
         }
     }
@@ -252,36 +254,40 @@ class PlayerViewModel @Inject @UnstableApi constructor(
         if (stations.isEmpty()) return
         if (stations == _currentStations.value) return
 
-        _currentStations.value = stations
+        // Do not override queue if we already have an active station (playing or paused).
+        if (_state.value.currentStation != null) return
 
-        if (!_state.value.isPlaying && _state.value.currentStation == null) {
-            playerController.updateStations(stations, activeStationUrl = null)
-        }
+        _currentStations.value = stations
+        playerController.updateStations(stations, activeStationUrl = null)
     }
 
-    private fun playStation(station: RadioStation, autostart: Boolean = false) {
+    private fun playStation(
+        station: RadioStation,
+        playlist: List<RadioStation>?,
+        autostart: Boolean = false
+    ) {
         android.util.Log.d("PlayerViewModel", "playStation: ${station.title}, artwork=${station.artwork}")
 
         ensureServiceRunning()
-        val currentList = _currentStations.value
-        val stationInList = currentList.any { it.url == station.url }
+        val playlistCandidate = playlist ?: _currentStations.value
+        val effectiveList = when {
+            playlistCandidate.isNullOrEmpty() -> listOf(station)
+            playlistCandidate.any { it.url == station.url } -> playlistCandidate
+            else -> playlistCandidate + station
+        }
 
-        // If station not in current playlist OR playlist size is 1 while we likely changed city -> rebuild playlist with new city's stations including this station
-        if (!stationInList) {
-            android.util.Log.d("PlayerViewModel", "playStation: station not in current list -> rebuilding playlist")
-            val rebuilt = if (currentList.isNotEmpty()) {
-                // Attempt to find stations from repository grouped by city
-                val all = radioRepository.getAllStations()
-                val sameCity = all.filter { it.city == station.city }
-                if (sameCity.isNotEmpty()) sameCity else listOf(station)
-            } else listOf(station)
-            _currentStations.value = rebuilt
-            playerController.setPlaylistAndPlay(rebuilt, station.url)
+        val stationInList = effectiveList.any { it.url == station.url }
+        val forcePlaylist = playlist != null && effectiveList != _currentStations.value
+
+        if (!stationInList || forcePlaylist) {
+            android.util.Log.d("PlayerViewModel", "playStation: rebuilding playlist (force=${forcePlaylist})")
+            _currentStations.value = effectiveList
+            playerController.setPlaylistAndPlay(effectiveList, station.url)
         } else {
-            // Station exists in current list: seek
+            _currentStations.value = effectiveList
             if (!playerController.hasMediaItem(station.url)) {
                 android.util.Log.d("PlayerViewModel", "playStation: media item missing in ExoPlayer -> resetting playlist")
-                playerController.setPlaylistAndPlay(currentList, station.url)
+                playerController.setPlaylistAndPlay(effectiveList, station.url)
             } else {
                 playerController.playStationByUrl("https://radio.yuntae.in" + station.url)
             }
@@ -296,7 +302,9 @@ class PlayerViewModel @Inject @UnstableApi constructor(
         }
     }
 
-    fun playStation(station: RadioStation) = playStation(station, autostart = false)
+    fun playStation(station: RadioStation) = playStation(station, playlist = _currentStations.value, autostart = false)
+
+    fun playStation(station: RadioStation, playlist: List<RadioStation>) = playStation(station, playlist = playlist, autostart = false)
 
     fun togglePlayPause() {
         if (_state.value.currentStation != null) {

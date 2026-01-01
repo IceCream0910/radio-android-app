@@ -8,5 +8,7 @@ data class PlayerUiState(
     val isBuffering: Boolean = false,
     val isFavorite: Boolean = false,
     val programTitle: String? = null,
-    val songTitle: String? = null
+    val songTitle: String? = null,
+    val hasPrev: Boolean = false,
+    val hasNext: Boolean = false
 )

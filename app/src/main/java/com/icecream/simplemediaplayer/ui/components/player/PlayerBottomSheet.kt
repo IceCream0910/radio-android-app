@@ -1,6 +1,5 @@
 package com.icecream.simplemediaplayer.ui.components.player
 
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -33,20 +32,17 @@ import kotlinx.coroutines.launch
 fun PlayerBottomSheet(
     playerState: PlayerUiState,
     timerState: SleepTimerState,
-    remainingTimeString: String,
+    onTimerClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onPreviousClick: () -> Unit,
     onNextClick: () -> Unit,
     onFavoriteClick: () -> Unit,
-    onStartTimer: (hours: Int, minutes: Int) -> Unit,
-    onCancelTimer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
     var isExpanded by remember { mutableStateOf(false) }
-    var showTimerSheet by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     if (playerState.currentStation != null) {
@@ -67,7 +63,7 @@ fun PlayerBottomSheet(
                     onPreviousClick = onPreviousClick,
                     onNextClick = onNextClick,
                     onFavoriteClick = onFavoriteClick,
-                    onTimerClick = { showTimerSheet = true },
+                    onTimerClick = onTimerClick,
                     onCollapse = {
                         scope.launch {
                             sheetState.hide()
@@ -84,16 +80,6 @@ fun PlayerBottomSheet(
             onClick = { isExpanded = true },
             modifier = modifier
         )
-
-        if (showTimerSheet) {
-            SleepTimerBottomSheet(
-                timerState = timerState,
-                remainingTimeString = remainingTimeString,
-                onDismiss = { showTimerSheet = false },
-                onStartTimer = onStartTimer,
-                onCancelTimer = onCancelTimer
-            )
-        }
     }
 }
 
@@ -416,4 +402,3 @@ private fun ExpandedPlayerContent(
         }
     }
 }
-

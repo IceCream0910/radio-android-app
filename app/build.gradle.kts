@@ -14,8 +14,8 @@ android {
         applicationId = "com.icecream.simplemediaplayer"
         minSdk = 27
         targetSdk = 36
-        versionCode = 11
-        versionName = "2.0.1"
+        versionCode = 13
+        versionName = "2.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

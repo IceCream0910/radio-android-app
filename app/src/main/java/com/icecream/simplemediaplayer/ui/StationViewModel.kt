@@ -49,7 +49,8 @@ class StationViewModel @Inject constructor(
                         groupedStations = grouped,
                         cities = grouped.keys.toList(),
                         selectedCity = current.selectedCity ?: firstCity,
-                        error = null
+                        error = null,
+                        searchResults = emptyList()
                     )
                 }
             } catch (e: Exception) {
@@ -83,5 +84,22 @@ class StationViewModel @Inject constructor(
     fun currentStations(): List<RadioStation> {
         val currentCity = _state.value.selectedCity
         return currentCity?.let { _state.value.groupedStations[it].orEmpty() } ?: emptyList()
+    }
+
+    fun searchStations(query: String) {
+        val trimmed = query.trim()
+        val allStations = _state.value.groupedStations.values.flatten()
+        val results = if (trimmed.isEmpty()) emptyList() else {
+            val lower = trimmed.lowercase()
+            allStations.filter {
+                it.title.lowercase().contains(lower) ||
+                        (it.city?.lowercase()?.contains(lower) ?: false)
+            }
+        }
+        _state.update { it.copy(searchQuery = query, searchResults = results) }
+    }
+
+    fun clearSearch() {
+        _state.update { it.copy(searchQuery = "", searchResults = emptyList()) }
     }
 }

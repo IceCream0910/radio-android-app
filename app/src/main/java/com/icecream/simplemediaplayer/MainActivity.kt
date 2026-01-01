@@ -1,16 +1,23 @@
 package com.icecream.simplemediaplayer
 
+import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
+import android.provider.Settings
 import android.util.Log
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,8 +28,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -34,15 +43,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.rounded.ArrowForwardIos
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -58,6 +71,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +81,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.ActivityCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
@@ -89,9 +104,15 @@ import com.icecream.simplemediaplayer.util.PermissionHelper
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
+import com.icecream.simplemediaplayer.ui.SleepTimerState
+import com.icecream.simplemediaplayer.ui.SleepTimerViewModel
+import com.icecream.simplemediaplayer.ui.components.player.PlayerBottomSheet
+import com.icecream.simplemediaplayer.ui.components.player.SearchBottomSheet
+import com.icecream.simplemediaplayer.ui.components.player.SleepTimerBottomSheet
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlin.math.abs
 
 @UnstableApi
 @AndroidEntryPoint
@@ -106,7 +127,7 @@ class MainActivity : ComponentActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 if (!ActivityCompat.shouldShowRequestPermissionRationale(
                         this,
-                        android.Manifest.permission.POST_NOTIFICATIONS
+                        Manifest.permission.POST_NOTIFICATIONS
                     )
                 ) {
                     showSettingsDialog = true
@@ -297,7 +318,7 @@ class MainActivity : ComponentActivity() {
                     TextButton(onClick = {
                         showNotificationDialog = false
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         }
                     }) {
                         Text("허용")
@@ -346,8 +367,8 @@ class MainActivity : ComponentActivity() {
                     TextButton(onClick = {
                         showSettingsDialog = false
                         val intent =
-                            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                data = android.net.Uri.fromParts("package", packageName, null)
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", packageName, null)
                             }
                         startActivity(intent)
                     }) {
@@ -371,10 +392,9 @@ class MainActivity : ComponentActivity() {
                 text = { Text("백그라운드 재생을 계속할까요? \n완전 종료를 선택하면 재생이 중지됩니다.") },
                 confirmButton = {
                     TextButton(onClick = {
-                        // keep background playback
                         (application as? RadioApp)?.allowBackgroundPlayback = true
                         showExitDialog = false
-                        finish()
+                        moveTaskToBack(true)
                     }) { Text("백그라운드 계속") }
                 },
                 dismissButton = {
@@ -388,7 +408,7 @@ class MainActivity : ComponentActivity() {
                         stopService(Intent(this, RadioService::class.java))
                         showExitDialog = false
                         finishAndRemoveTask()
-                        android.os.Process.killProcess(android.os.Process.myPid())
+                        Process.killProcess(Process.myPid())
                     }) { Text("완전 종료") }
                 }
             )
@@ -401,7 +421,7 @@ class MainActivity : ComponentActivity() {
                 text = { Text("인터넷에 연결되어 있지 않습니다.\n라디오를 재생하려면 네트워크 연결이 필요합니다.") },
                 confirmButton = {
                     TextButton(onClick = {
-                        val intent = Intent(android.provider.Settings.ACTION_WIFI_SETTINGS)
+                        val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
                         startActivity(intent)
                     }) {
                         Text("네트워크 설정")
@@ -410,12 +430,12 @@ class MainActivity : ComponentActivity() {
                 dismissButton = {
                     TextButton(onClick = {
                         finishAndRemoveTask()
-                        android.os.Process.killProcess(android.os.Process.myPid())
+                        Process.killProcess(Process.myPid())
                     }) {
                         Text("앱 종료")
                     }
                 },
-                properties = androidx.compose.ui.window.DialogProperties(
+                properties = DialogProperties(
                     dismissOnBackPress = false,
                     dismissOnClickOutside = false
                 )
@@ -434,7 +454,10 @@ private fun AppRoot(activity: MainActivity) {
     val navController = rememberNavController()
     val playerViewModel: PlayerViewModel = hiltViewModel()
     val settingsViewModel: SettingsViewModel = hiltViewModel()
+    val timerViewModel: SleepTimerViewModel = hiltViewModel()
     val settings by settingsViewModel.settings.collectAsState()
+    val timerState by timerViewModel.state.collectAsState()
+    var showTimerSheet by remember { mutableStateOf(false) }
 
     // Network monitoring
     val app = activity.application as RadioApp
@@ -466,29 +489,21 @@ private fun AppRoot(activity: MainActivity) {
             modifier = Modifier.fillMaxSize(),
             topBar = {
                 AdMobBanner(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    modifier = Modifier.statusBarsPadding()
                 )
             },
             bottomBar = {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     val playerState by playerViewModel.state.collectAsState()
-                    val timerViewModel: com.icecream.simplemediaplayer.ui.SleepTimerViewModel = hiltViewModel()
-                    val timerState by timerViewModel.state.collectAsState()
 
-                    com.icecream.simplemediaplayer.ui.components.player.PlayerBottomSheet(
+                    PlayerBottomSheet(
                         playerState = playerState,
                         timerState = timerState,
-                        remainingTimeString = timerViewModel.getRemainingTimeString(),
+                        onTimerClick = { showTimerSheet = true },
                         onPlayPauseClick = { playerViewModel.togglePlayPause() },
                         onPreviousClick = { playerViewModel.playPrev() },
                         onNextClick = { playerViewModel.playNext() },
-                        onFavoriteClick = { playerViewModel.toggleFavorite() },
-                        onStartTimer = { hours, minutes ->
-                            timerViewModel.startTimer(hours, minutes)
-                        },
-                        onCancelTimer = {
-                            timerViewModel.cancelTimer()
-                        }
+                        onFavoriteClick = { playerViewModel.toggleFavorite() }
                     )
                     AppBottomBar(navController)
                 }
@@ -498,12 +513,28 @@ private fun AppRoot(activity: MainActivity) {
                 navController = navController,
                 contentPadding = innerPadding,
                 playerViewModel = playerViewModel,
-                settingsViewModel = settingsViewModel
+                settingsViewModel = settingsViewModel,
+                timerState = timerState,
+                onTimerClick = { showTimerSheet = true }
+            )
+        }
+
+        if (showTimerSheet) {
+            SleepTimerBottomSheet(
+                timerState = timerState,
+                remainingTimeString = timerViewModel.getRemainingTimeString(),
+                onDismiss = { showTimerSheet = false },
+                onStartTimer = { hours, minutes ->
+                    timerViewModel.startTimer(hours, minutes)
+                },
+                onCancelTimer = {
+                    timerViewModel.cancelTimer()
+                }
             )
         }
     }
 
-    androidx.activity.compose.BackHandler { activity.showExitDialog = true }
+    BackHandler { activity.showExitDialog = true }
 }
 
 @Composable
@@ -547,32 +578,34 @@ private fun NavGraph(
     navController: NavHostController,
     contentPadding: PaddingValues,
     playerViewModel: PlayerViewModel,
-    settingsViewModel: SettingsViewModel
+    settingsViewModel: SettingsViewModel,
+    timerState: SleepTimerState,
+    onTimerClick: () -> Unit
 ) {
     NavHost(
         navController = navController,
         enterTransition = {
-            androidx.compose.animation.slideInHorizontally(
+            slideInHorizontally(
                 initialOffsetX = { it },
-                animationSpec = androidx.compose.animation.core.tween(300)
+                animationSpec = tween(300)
             )
         },
         exitTransition = {
-            androidx.compose.animation.slideOutHorizontally(
+            slideOutHorizontally(
                 targetOffsetX = { -it },
-                animationSpec = androidx.compose.animation.core.tween(300)
+                animationSpec = tween(300)
             )
         },
         popEnterTransition = {
-            androidx.compose.animation.slideInHorizontally(
+            slideInHorizontally(
                 initialOffsetX = { -it },
-                animationSpec = androidx.compose.animation.core.tween(300)
+                animationSpec = tween(300)
             )
         },
         popExitTransition = {
-            androidx.compose.animation.slideOutHorizontally(
+            slideOutHorizontally(
                 targetOffsetX = { it },
-                animationSpec = androidx.compose.animation.core.tween(300)
+                animationSpec = tween(300)
             )
         },
         startDestination = BottomNavDestinations.HOME.route,
@@ -580,14 +613,14 @@ private fun NavGraph(
     ) {
         composable(BottomNavDestinations.HOME.route) {
             val stationViewModel: StationViewModel = hiltViewModel()
-            HomeScreen(stationViewModel, playerViewModel)
+            HomeScreen(stationViewModel, playerViewModel, timerState, onTimerClick)
         }
         composable(BottomNavDestinations.FAVORITES.route) {
             val stationViewModel: StationViewModel = hiltViewModel()
-            FavoritesScreen(stationViewModel, playerViewModel)
+            FavoritesScreen(stationViewModel, playerViewModel, timerState, onTimerClick)
         }
         composable(BottomNavDestinations.SETTINGS.route) {
-            SettingsScreen(settingsViewModel)
+            SettingsScreen(settingsViewModel, timerState, onTimerClick)
         }
     }
 }
@@ -596,17 +629,33 @@ private fun NavGraph(
 @Composable
 private fun HomeScreen(
     stationViewModel: StationViewModel,
-    playerViewModel: PlayerViewModel
+    playerViewModel: PlayerViewModel,
+    timerState: SleepTimerState,
+    onTimerClick: () -> Unit
 ) {
     val ui by stationViewModel.state.collectAsState()
     val playerState by playerViewModel.state.collectAsState()
+    var showSearchSheet by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            text = "스테이션",
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 0.dp)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 0.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "스테이션",
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                IconButton(onClick = { showSearchSheet = true }) {
+                    Icon(Icons.Rounded.Search, contentDescription = "검색")
+                }
+                TimerIconButton(timerState = timerState, onClick = onTimerClick)
+            }
+        }
 
         CityTabs(
             cities = ui.cities,
@@ -627,8 +676,23 @@ private fun HomeScreen(
             currentPlayingUrl = playerState.currentStation?.url,
             isPlaying = playerState.isPlaying,
             onToggleFavorite = { stationViewModel.toggleFavorite(it) },
-            onClick = { playerViewModel.playStation(it) }
+            onClick = { playerViewModel.playStation(it, currentList) }
         )
+
+        if (showSearchSheet) {
+            SearchBottomSheet(
+                isOpen = showSearchSheet,
+                initialQuery = ui.searchQuery,
+                results = ui.searchResults,
+                onQueryChange = { stationViewModel.searchStations(it) },
+                onClear = { stationViewModel.clearSearch() },
+                onDismiss = { showSearchSheet = false },
+                onClickResult = {
+                    playerViewModel.playStation(it, ui.searchResults)
+                    showSearchSheet = false
+                }
+            )
+        }
     }
 }
 
@@ -636,7 +700,9 @@ private fun HomeScreen(
 @Composable
 private fun FavoritesScreen(
     stationViewModel: StationViewModel,
-    playerViewModel: PlayerViewModel
+    playerViewModel: PlayerViewModel,
+    timerState: SleepTimerState,
+    onTimerClick: () -> Unit
 ) {
     val ui by stationViewModel.state.collectAsState()
     val playerState by playerViewModel.state.collectAsState()
@@ -649,11 +715,19 @@ private fun FavoritesScreen(
         .toList()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            text = "자주 듣는",
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            modifier = Modifier.padding(16.dp)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 0.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "자주 듣는",
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+            )
+            TimerIconButton(timerState = timerState, onClick = onTimerClick)
+        }
 
         LaunchedEffect(favList) {
             playerViewModel.setCurrentStations(favList)
@@ -691,13 +765,12 @@ private fun FavoritesScreen(
                 currentPlayingUrl = playerState.currentStation?.url,
                 isPlaying = playerState.isPlaying,
                 onToggleFavorite = { stationViewModel.toggleFavorite(it) },
-                onClick = { playerViewModel.playStation(it) }
+                onClick = { playerViewModel.playStation(it, favList) }
             )
         }
     }
 }
 
-// City code -> display label mapping
 private val cityLabel: Map<String, String> = mapOf(
     "seoul" to "수도권",
     "busan" to "부산·울산·경남",
@@ -726,13 +799,10 @@ private fun CityTabs(
 
     LazyRow(
         state = listState,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentPadding = PaddingValues(horizontal = 4.dp),
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        itemsIndexed(cities) { _, city ->
+        itemsIndexed(cities) { index, city ->
             val isSelected =
                 city == selectedCity || (selectedCity == null && cities.firstOrNull() == city)
             val label = cityLabel[city] ?: city
@@ -751,6 +821,10 @@ private fun CityTabs(
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                     selectedLabelColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.padding(
+                    start = if (index == 0) 16.dp else 0.dp,
+                    end = if (index == cities.lastIndex) 16.dp else 0.dp
                 )
             )
         }
@@ -780,20 +854,29 @@ private fun StationList(
 }
 
 @Composable
-private fun SettingsScreen(settingsViewModel: SettingsViewModel) {
+private fun SettingsScreen(
+    settingsViewModel: SettingsViewModel,
+    timerState: SleepTimerState,
+    onTimerClick: () -> Unit
+) {
     val settings by settingsViewModel.settings.collectAsState()
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
     ) {
         item {
-            Text(
-                text = "설정",
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "설정",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+                )
+            }
         }
 
 
@@ -854,7 +937,7 @@ private fun SettingsScreen(settingsViewModel: SettingsViewModel) {
                 ) {
                     scaleOptions.forEachIndexed { index, (scale, label) ->
                         SegmentedButton(
-                            selected = (settings.uiScale - scale).let { kotlin.math.abs(it) < 0.01f },
+                            selected = (settings.uiScale - scale).let { abs(it) < 0.01f },
                             onClick = { settingsViewModel.setUiScale(scale) },
                             shape = SegmentedButtonDefaults.itemShape(
                                 index = index,
@@ -1112,4 +1195,18 @@ fun AdMobBanner(
             }
         }
     )
+}
+
+@Composable
+private fun TimerIconButton(
+    timerState: SleepTimerState,
+    onClick: () -> Unit
+) {
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector = if (timerState.isRunning) Icons.Rounded.Timer else Icons.Outlined.Timer,
+            contentDescription = "타이머",
+            tint = if (timerState.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 }

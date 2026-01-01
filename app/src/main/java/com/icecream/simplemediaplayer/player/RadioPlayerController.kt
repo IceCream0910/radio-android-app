@@ -36,7 +36,7 @@ import javax.inject.Singleton
 class RadioPlayerController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val exoPlayer: ExoPlayer,
-    private val repository: RadioRepository
+    @Suppress("unused") private val repository: RadioRepository
 ) {
     private val baseUrl = "https://radio.yuntae.in"
 
@@ -96,6 +96,8 @@ class RadioPlayerController @Inject constructor(
         }
     }
 
+    private var suppressPlayWhenReadyHandling = false
+
     val mediaSession: MediaSession = MediaSession.Builder(context, exoPlayer)
         .setId("RadioPlayerSession")
         .setCallback(sessionCallback)
@@ -115,8 +117,27 @@ class RadioPlayerController @Inject constructor(
                 isPlaying = player.isPlaying,
                 isBuffering = player.playbackState == Player.STATE_BUFFERING,
                 title = mediaItem?.mediaMetadata?.title?.toString() ?: "",
-                stationUrl = mediaItem?.mediaId
+                stationUrl = mediaItem?.mediaId,
+                hasPrev = player.hasPreviousMediaItem(),
+                hasNext = player.hasNextMediaItem()
             )
+        }
+
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (suppressPlayWhenReadyHandling) return
+
+            val userDriven = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
+                    reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
+
+            if (!userDriven) return // let ExoPlayer handle focus/noisy cases
+
+            suppressPlayWhenReadyHandling = true
+            if (playWhenReady) {
+                restartFromCurrent()
+            } else {
+                pauseAndResetCurrent()
+            }
+            suppressPlayWhenReadyHandling = false
         }
     }
 
@@ -248,7 +269,7 @@ class RadioPlayerController @Inject constructor(
                     setUri(lc.uri)
                     lc.mimeType?.let { setMimeType(it) }
                 }
-                current.liveConfiguration?.let { setLiveConfiguration(it) }
+                setLiveConfiguration(current.liveConfiguration)
             }
             .build()
 
@@ -271,10 +292,22 @@ class RadioPlayerController @Inject constructor(
 
     fun togglePlayPause() {
         if (exoPlayer.isPlaying) {
-            exoPlayer.pause()
+            pauseAndResetCurrent()
         } else {
-            exoPlayer.playWhenReady = true
+            restartFromCurrent()
         }
+    }
+
+    fun pauseAndResetCurrent() {
+        exoPlayer.stop()
+    }
+
+    fun restartFromCurrent() {
+        if (exoPlayer.mediaItemCount == 0) return
+        val targetIndex = exoPlayer.currentMediaItemIndex.takeIf { it != C.INDEX_UNSET } ?: 0
+        exoPlayer.seekTo(targetIndex, C.TIME_UNSET)
+        exoPlayer.prepare()
+        exoPlayer.playWhenReady = true
     }
 
     fun release() {
@@ -295,5 +328,7 @@ data class PlayerState(
     val title: String = "",
     val stationUrl: String? = null,
     val isPlaying: Boolean = false,
-    val isBuffering: Boolean = false
+    val isBuffering: Boolean = false,
+    val hasPrev: Boolean = false,
+    val hasNext: Boolean = false
 )
