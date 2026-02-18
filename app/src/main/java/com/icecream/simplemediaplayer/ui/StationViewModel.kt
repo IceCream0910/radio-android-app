@@ -81,6 +81,23 @@ class StationViewModel @Inject constructor(
         }
     }
 
+    fun toggleEditMode() {
+        _state.update { it.copy(isEditMode = !it.isEditMode) }
+    }
+
+    fun moveFavorite(fromIndex: Int, toIndex: Int) {
+        val currentFavorites = _state.value.favorites.toMutableList()
+        if (fromIndex !in currentFavorites.indices || toIndex !in currentFavorites.indices) return
+        
+        val item = currentFavorites.removeAt(fromIndex)
+        currentFavorites.add(toIndex, item)
+        
+        _state.update { it.copy(favorites = currentFavorites) }
+        viewModelScope.launch {
+            favoritesDataSource.updateOrder(currentFavorites)
+        }
+    }
+
     fun currentStations(): List<RadioStation> {
         val currentCity = _state.value.selectedCity
         return currentCity?.let { _state.value.groupedStations[it].orEmpty() } ?: emptyList()

@@ -15,9 +15,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,14 +42,19 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForwardIos
+import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.rounded.ArrowForwardIos
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.DragHandle
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -77,7 +84,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -112,6 +123,10 @@ import com.icecream.simplemediaplayer.ui.components.player.SleepTimerBottomSheet
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import org.burnoutcrew.reorderable.ReorderableItem
+import org.burnoutcrew.reorderable.detectReorderAfterLongPress
+import org.burnoutcrew.reorderable.rememberReorderableLazyListState
+import org.burnoutcrew.reorderable.reorderable
 import kotlin.math.abs
 
 @UnstableApi
@@ -672,7 +687,7 @@ private fun HomeScreen(
 
         StationList(
             stations = currentList,
-            favorites = ui.favorites,
+            favorites = ui.favorites.toSet(),
             currentPlayingUrl = playerState.currentStation?.url,
             isPlaying = playerState.isPlaying,
             onToggleFavorite = { stationViewModel.toggleFavorite(it) },
@@ -707,12 +722,11 @@ private fun FavoritesScreen(
     val ui by stationViewModel.state.collectAsState()
     val playerState by playerViewModel.state.collectAsState()
     val allStations = ui.groupedStations.values.flatten()
-    val favList = allStations
-        .filter { ui.favorites.contains(it.url) }
-        // URL을 기준으로 중복 제거
-        .associateBy { it.url }
-        .values
-        .toList()
+    
+    // UI Favorites URL 순서에 맞춰 정렬
+    val favList = ui.favorites.mapNotNull { url ->
+        allStations.find { it.url == url }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -726,7 +740,18 @@ private fun FavoritesScreen(
                 text = "자주 듣는",
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
             )
-            TimerIconButton(timerState = timerState, onClick = onTimerClick)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (favList.isNotEmpty()) {
+                    IconButton(onClick = { stationViewModel.toggleEditMode() }) {
+                        Icon(
+                            imageVector = if (ui.isEditMode) Icons.Rounded.Check else Icons.AutoMirrored.Rounded.Sort,
+                            contentDescription = "순서 변경",
+                            tint = if (ui.isEditMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                TimerIconButton(timerState = timerState, onClick = onTimerClick)
+            }
         }
 
         LaunchedEffect(favList) {
@@ -759,14 +784,71 @@ private fun FavoritesScreen(
                 }
             }
         } else {
-            StationList(
-                stations = favList,
-                favorites = ui.favorites,
-                currentPlayingUrl = playerState.currentStation?.url,
-                isPlaying = playerState.isPlaying,
-                onToggleFavorite = { stationViewModel.toggleFavorite(it) },
-                onClick = { playerViewModel.playStation(it, favList) }
-            )
+            if (ui.isEditMode) {
+                val hapticFeedback = LocalHapticFeedback.current
+
+                val state = rememberReorderableLazyListState(
+                    onMove = { from, to ->
+                        if (from.index != to.index) {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+                        }
+                        stationViewModel.moveFavorite(from.index, to.index)
+                    }
+                )
+
+                LazyColumn(
+                    state = state.listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .reorderable(state)
+                        .detectReorderAfterLongPress(state)
+                ) {
+                    items(favList, key = { it.url }) { station ->
+                        ReorderableItem(
+                            state = state,
+                            key = station.url,
+                        ) { isDragging ->
+                            // Long press 시작 시 햅틱 피드백
+                            LaunchedEffect(isDragging) {
+                                if (isDragging) {
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 12.dp, bottom = 12.dp)
+                                    .background(MaterialTheme.colorScheme.surface)
+                            ) {
+                                StationListItem(
+                                    station = station,
+                                    isFavorite = true,
+                                    isPlaying = false,
+                                    onToggleFavorite = {},
+                                    onClick = {},
+                                    trailingContent = {
+                                        Icon(
+                                            Icons.Rounded.DragHandle,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(end = 12.dp)
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                StationList(
+                    stations = favList,
+                    favorites = ui.favorites.toSet(),
+                    currentPlayingUrl = playerState.currentStation?.url,
+                    isPlaying = playerState.isPlaying,
+                    onToggleFavorite = { stationViewModel.toggleFavorite(it) },
+                    onClick = { playerViewModel.playStation(it, favList) }
+                )
+            }
         }
     }
 }
@@ -1045,7 +1127,7 @@ private fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Icon(
-                    imageVector = Icons.Rounded.ArrowForwardIos,
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowForwardIos,
                     contentDescription = "링크 열기",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(12.dp)
@@ -1075,7 +1157,7 @@ private fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Icon(
-                    imageVector = Icons.Rounded.ArrowForwardIos,
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowForwardIos,
                     contentDescription = "링크 열기",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(12.dp)
@@ -1165,7 +1247,7 @@ private fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Icon(
-                    imageVector = Icons.Rounded.ArrowForwardIos,
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowForwardIos,
                     contentDescription = "링크 열기",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(12.dp)

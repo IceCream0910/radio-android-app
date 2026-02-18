@@ -7,8 +7,9 @@ data class StationUiState(
     val groupedStations: Map<String, List<RadioStation>> = emptyMap(),
     val cities: List<String> = emptyList(),
     val selectedCity: String? = null,
-    val favorites: Set<String> = emptySet(),
+    val favorites: List<String> = emptyList(),
     val error: String? = null,
     val searchQuery: String = "",
-    val searchResults: List<RadioStation> = emptyList()
+    val searchResults: List<RadioStation> = emptyList(),
+    val isEditMode: Boolean = false
 )

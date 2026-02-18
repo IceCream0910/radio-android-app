@@ -44,7 +44,7 @@ class PlayerViewModel @Inject @UnstableApi constructor(
 
     private val _currentStations = MutableStateFlow<List<RadioStation>>(emptyList())
     private var cachedStoredPlayback: StoredPlaybackState? = null
-    private var favoriteUrls: Set<String> = emptySet()
+    private var favoriteUrls: List<String> = emptyList()
 
     // Program/Song refresh state
     private var programRefreshJob: Job? = null

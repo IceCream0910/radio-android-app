@@ -37,6 +37,7 @@ fun StationListItem(
     isPlaying: Boolean = false,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    trailingContent: @Composable (() -> Unit)? = null
 ) {
     val scale by animateFloatAsState(targetValue = 0.95f, label = "scale")
     val textColor = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -74,14 +75,17 @@ fun StationListItem(
                 }
             }
 
-            IconButton(onClick = onToggleFavorite) {
-                Icon(
-                    imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                    modifier = Modifier.size(20.dp),
-                    contentDescription = null
-                )
+            if (trailingContent != null) {
+                trailingContent()
+            } else {
+                IconButton(onClick = onToggleFavorite) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                        modifier = Modifier.size(20.dp),
+                        contentDescription = null
+                    )
+                }
             }
         }
     }
 }
-
