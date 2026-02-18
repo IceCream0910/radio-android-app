@@ -113,13 +113,14 @@ class RadioPlayerController @Inject constructor(
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             val mediaItem = player.currentMediaItem
+            val hasMultipleItems = player.mediaItemCount > 1
             _playerState.value = _playerState.value.copy(
                 isPlaying = player.isPlaying,
                 isBuffering = player.playbackState == Player.STATE_BUFFERING,
                 title = mediaItem?.mediaMetadata?.title?.toString() ?: "",
                 stationUrl = mediaItem?.mediaId,
-                hasPrev = player.hasPreviousMediaItem(),
-                hasNext = player.hasNextMediaItem()
+                hasPrev = hasMultipleItems,  // 무한 탐색이므로 항상 활성화
+                hasNext = hasMultipleItems   // 무한 탐색이므로 항상 활성화
             )
         }
 
@@ -277,17 +278,33 @@ class RadioPlayerController @Inject constructor(
     }
 
     fun playPrev() {
-        if (exoPlayer.hasPreviousMediaItem()) {
-            exoPlayer.seekToPreviousMediaItem()
-            exoPlayer.playWhenReady = true
+        if (exoPlayer.mediaItemCount == 0) return
+
+        val currentIndex = exoPlayer.currentMediaItemIndex
+        val nextIndex = if (currentIndex > 0) {
+            currentIndex - 1
+        } else {
+            // 맨 처음에 있으면 맨 끝으로 이동 (무한 탐색)
+            exoPlayer.mediaItemCount - 1
         }
+
+        exoPlayer.seekTo(nextIndex, C.TIME_UNSET)
+        exoPlayer.playWhenReady = true
     }
 
     fun playNext() {
-        if (exoPlayer.hasNextMediaItem()) {
-            exoPlayer.seekToNextMediaItem()
-            exoPlayer.playWhenReady = true
+        if (exoPlayer.mediaItemCount == 0) return
+
+        val currentIndex = exoPlayer.currentMediaItemIndex
+        val nextIndex = if (currentIndex < exoPlayer.mediaItemCount - 1) {
+            currentIndex + 1
+        } else {
+            // 맨 끝에 있으면 맨 처음으로 이동 (무한 탐색)
+            0
         }
+
+        exoPlayer.seekTo(nextIndex, C.TIME_UNSET)
+        exoPlayer.playWhenReady = true
     }
 
     fun togglePlayPause() {
