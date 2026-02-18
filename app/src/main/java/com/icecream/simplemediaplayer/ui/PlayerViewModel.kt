@@ -209,15 +209,29 @@ class PlayerViewModel @Inject @UnstableApi constructor(
 
     fun restoreLastPlayback(autoPlay: Boolean) {
         viewModelScope.launch {
-            val stored = cachedStoredPlayback ?: playbackPrefs.playbackState.first().also {
-                cachedStoredPlayback = it
-                applyStoredPlayback(it)
-            }
-            val targetStation = stored.lastStationUrl?.let { url ->
-                stored.queue.firstOrNull { it.url == url }
-            } ?: _state.value.currentStation
-            if (targetStation != null && autoPlay) {
-                playStation(targetStation, playlist = _currentStations.value, autostart = true)
+            try {
+                val stored = cachedStoredPlayback ?: playbackPrefs.playbackState.first().also {
+                    cachedStoredPlayback = it
+                    applyStoredPlayback(it)
+                }
+
+                val targetStation = stored.lastStationUrl?.let { url ->
+                    stored.queue.firstOrNull { it.url == url }
+                } ?: _state.value.currentStation
+
+                if (targetStation != null && autoPlay) {
+                    android.util.Log.d("PlayerViewModel", "Restoring playback: ${targetStation.title}, autoPlay=$autoPlay")
+                    // 포그라운드 서비스 시작 확인
+                    ensureServiceRunning()
+
+                    // 약간의 지연을 두고 재생 시도 (서비스 초기화 완료 대기)
+                    delay(500)
+                    playStation(targetStation, playlist = _currentStations.value, autostart = true)
+                } else {
+                    android.util.Log.d("PlayerViewModel", "No station to restore or autoPlay disabled")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("PlayerViewModel", "Failed to restore playback", e)
             }
         }
     }

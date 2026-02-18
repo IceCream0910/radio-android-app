@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
@@ -50,6 +51,11 @@ class RadioService : MediaLibraryService() {
     private var mediaLibrarySession: MediaLibrarySession? = null
     private var isForegroundService = false
 
+    // 캐시 데이터
+    private var cachedFavorites: List<String> = emptyList()
+    private var cachedRecentStations: List<String> = emptyList()
+    private var isInitialized = false
+
     private val cityLabel: Map<String, String> = mapOf(
         "seoul" to "수도권",
         "busan" to "부산·울산·경남",
@@ -64,12 +70,40 @@ class RadioService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        runBlocking {
+            try {
+                repository.fetchStations()
+                android.util.Log.d("RadioService", "Stations loaded: ${repository.getAllStations().size} items")
+
+                cachedFavorites = favoritesDataSource.favorites.first()
+                android.util.Log.d("RadioService", "Initial favorites cached: ${cachedFavorites.size} items")
+
+                cachedRecentStations = recentStationsDataSource.recentStations.first()
+                android.util.Log.d("RadioService", "Initial recent stations cached: ${cachedRecentStations.size} items")
+            } catch (e: Exception) {
+                android.util.Log.e("RadioService", "Failed to load initial data", e)
+            }
+        }
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                repository.fetchStations()
+                favoritesDataSource.favorites.collect { favorites ->
+                    cachedFavorites = favorites
+                    android.util.Log.d("RadioService", "Favorites updated: ${favorites.size} items")
+                }
             } catch (e: Exception) {
-                android.util.Log.e("RadioService", "Failed to load stations", e)
+                android.util.Log.e("RadioService", "Failed to collect favorites", e)
+            }
+        }
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                recentStationsDataSource.recentStations.collect { recent ->
+                    cachedRecentStations = recent
+                    android.util.Log.d("RadioService", "Recent stations updated: ${recent.size} items")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("RadioService", "Failed to collect recent stations", e)
             }
         }
 
@@ -80,12 +114,26 @@ class RadioService : MediaLibraryService() {
             MediaLibrarySessionCallback()
         ).build()
 
+        isInitialized = true
+
         // Build notification
         notificationManager.buildNotification(
             mediaSession = mediaLibrarySession!!,
             notificationListener = object : PlayerNotificationManager.NotificationListener {
                 override fun onNotificationCancelled(notificationId: Int, dismissedByUser: Boolean) {
-                    stopAndRelease()
+                    if (isForegroundService) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        isForegroundService = false
+                    }
+
+                    val player = playerController.player
+                    val canStop = dismissedByUser &&
+                        player.playbackState == Player.STATE_IDLE &&
+                        player.mediaItemCount == 0
+
+                    if (canStop) {
+                        stopAndRelease()
+                    }
                 }
 
                 override fun onNotificationPosted(
@@ -112,7 +160,8 @@ class RadioService : MediaLibraryService() {
             stopAndRelease()
             return START_NOT_STICKY
         }
-        return START_NOT_STICKY
+        // 서비스가 종료되면 시스템이 자동으로 재시작하도록 설정
+        return START_STICKY
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -142,10 +191,7 @@ class RadioService : MediaLibraryService() {
         (applicationContext as? RadioApp)?.allowBackgroundPlayback = false
 
         (application as? RadioApp)?.stopAllPlayback()
-        val stopIntent = Intent(this, RadioService::class.java).apply { action = ACTION_STOP_ALL }
-        startService(stopIntent)
-        stopService(Intent(this, RadioService::class.java))
-        android.os.Process.killProcess(android.os.Process.myPid())
+        stopSelf()
     }
 
     // MediaLibrarySession Callback for Android Auto
@@ -179,42 +225,55 @@ class RadioService : MediaLibraryService() {
             pageSize: Int,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            if (!isInitialized) {
+                android.util.Log.w("RadioService", "Service not initialized yet, returning empty list")
+                return Futures.immediateFuture(
+                    LibraryResult.ofItemList(ImmutableList.of(), params)
+                )
+            }
+
             return when (parentId) {
                 "root" -> {
-                    // Root: Show "Recent", "Favorites" and city folders
+                    // Root: Show "Favorites" and city folders
                     val items = mutableListOf<MediaItem>()
 
-                    // Add Favorites folder
-                    items.add(
-                        MediaItem.Builder()
-                            .setMediaId("favorites")
-                            .setMediaMetadata(
-                                MediaMetadata.Builder()
-                                    .setTitle("자주 듣는")
-                                    .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-                                    .setIsPlayable(false)
-                                    .setIsBrowsable(true)
-                                    .build()
-                            )
-                            .build()
-                    )
-
-                    // Add city folders
-                    val stationsByCity = getStationsByCity()
-                    val cityItems = stationsByCity.keys.map { city ->
-                        MediaItem.Builder()
-                            .setMediaId("city_$city")
-                            .setMediaMetadata(
-                                MediaMetadata.Builder()
-                                    .setTitle(cityLabel[city] ?: city)
-                                    .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-                                    .setIsPlayable(false)
-                                    .setIsBrowsable(true)
-                                    .build()
-                            )
-                            .build()
+                    // Add Favorites folder (only if has favorites)
+                    if (cachedFavorites.isNotEmpty()) {
+                        items.add(
+                            MediaItem.Builder()
+                                .setMediaId("favorites")
+                                .setMediaMetadata(
+                                    MediaMetadata.Builder()
+                                        .setTitle("자주 듣는")
+                                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                                        .setIsPlayable(false)
+                                        .setIsBrowsable(true)
+                                        .build()
+                                )
+                                .build()
+                        )
                     }
-                    items.addAll(cityItems)
+
+                    val stationsByCity = getStationsByCity()
+                    if (stationsByCity.isEmpty()) {
+                        android.util.Log.w("RadioService", "No stations loaded yet")
+                    } else {
+                        android.util.Log.d("RadioService", "Loaded ${stationsByCity.size} city folders")
+                        val cityItems = stationsByCity.keys.sorted().map { city ->
+                            MediaItem.Builder()
+                                .setMediaId("city_$city")
+                                .setMediaMetadata(
+                                    MediaMetadata.Builder()
+                                        .setTitle(cityLabel[city] ?: city)
+                                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                                        .setIsPlayable(false)
+                                        .setIsBrowsable(true)
+                                        .build()
+                                )
+                                .build()
+                        }
+                        items.addAll(cityItems)
+                    }
 
                     Futures.immediateFuture(
                         LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
@@ -222,10 +281,16 @@ class RadioService : MediaLibraryService() {
                 }
 
                 "recent" -> {
-                    // Show recently played stations
-                    val recentUrls = runBlocking { recentStationsDataSource.recentStations.first() }
+                    // Show recently played stations (using cache)
                     val allStations = getAllStations()
-                    val recentStations = recentUrls.mapNotNull { url ->
+                    if (allStations.isEmpty()) {
+                        android.util.Log.w("RadioService", "No stations available for recent")
+                        return Futures.immediateFuture(
+                            LibraryResult.ofItemList(ImmutableList.of(), params)
+                        )
+                    }
+
+                    val recentStations = cachedRecentStations.mapNotNull { url ->
                         allStations.find { it.url == url }
                     }
 
@@ -239,10 +304,16 @@ class RadioService : MediaLibraryService() {
                 }
 
                 "favorites" -> {
-                    // Show favorite stations
-                    val favoriteUrls = runBlocking { favoritesDataSource.favorites.first() }
+                    // Show favorite stations (using cache)
                     val allStations = getAllStations()
-                    val favoriteStations = allStations.filter { favoriteUrls.contains(it.url) }
+                    if (allStations.isEmpty()) {
+                        android.util.Log.w("RadioService", "No stations available for favorites")
+                        return Futures.immediateFuture(
+                            LibraryResult.ofItemList(ImmutableList.of(), params)
+                        )
+                    }
+
+                    val favoriteStations = allStations.filter { cachedFavorites.contains(it.url) }
 
                     val stationItems = favoriteStations.map { station ->
                         createStationMediaItem(station)
@@ -257,6 +328,13 @@ class RadioService : MediaLibraryService() {
                     if (parentId.startsWith("city_")) {
                         val city = parentId.removePrefix("city_")
                         val stations = getStationsByCity()[city] ?: emptyList()
+
+                        if (stations.isEmpty()) {
+                            android.util.Log.w("RadioService", "No stations found for city: $city")
+                        } else {
+                            android.util.Log.d("RadioService", "Loaded ${stations.size} stations for city: $city")
+                        }
+
                         val stationItems = stations.map { station ->
                             createStationMediaItem(station)
                         }
@@ -264,6 +342,7 @@ class RadioService : MediaLibraryService() {
                             LibraryResult.ofItemList(ImmutableList.copyOf(stationItems), params)
                         )
                     } else {
+                        android.util.Log.w("RadioService", "Unknown parentId: $parentId")
                         Futures.immediateFuture(
                             LibraryResult.ofItemList(ImmutableList.of<MediaItem>(), params)
                         )
@@ -277,14 +356,32 @@ class RadioService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             mediaId: String
         ): ListenableFuture<LibraryResult<MediaItem>> {
+            if (!isInitialized) {
+                android.util.Log.w("RadioService", "Service not initialized, cannot get item: $mediaId")
+                return Futures.immediateFuture(
+                    LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
+                )
+            }
+
             if (mediaId.startsWith("station_")) {
                 val stationUrl = mediaId.removePrefix("station_")
                 val allStations = getAllStations()
+
+                if (allStations.isEmpty()) {
+                    android.util.Log.e("RadioService", "No stations available, cannot get item: $stationUrl")
+                    return Futures.immediateFuture(
+                        LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
+                    )
+                }
+
                 val station = allStations.find { it.url == stationUrl }
 
                 if (station != null) {
+                    android.util.Log.d("RadioService", "Found station: ${station.title}")
                     val mediaItem = createPlayableStationMediaItem(station)
                     return Futures.immediateFuture(LibraryResult.ofItem(mediaItem, null))
+                } else {
+                    android.util.Log.w("RadioService", "Station not found: $stationUrl")
                 }
             }
 
@@ -298,36 +395,59 @@ class RadioService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>
         ): ListenableFuture<MutableList<MediaItem>> {
+            if (!isInitialized) {
+                android.util.Log.w("RadioService", "Service not initialized, returning original items")
+                return Futures.immediateFuture(mediaItems)
+            }
+
             val updatedItems = mutableListOf<MediaItem>()
 
             mediaItems.forEach { mediaItem ->
                 if (mediaItem.mediaId.startsWith("station_")) {
                     val stationUrl = mediaItem.mediaId.removePrefix("station_")
                     val allStations = getAllStations()
+
+                    if (allStations.isEmpty()) {
+                        android.util.Log.e("RadioService", "No stations available for adding media items")
+                        // Return original item to avoid infinite loading
+                        updatedItems.add(mediaItem)
+                        return@forEach
+                    }
+
                     val selectedStation = allStations.find { it.url == stationUrl }
 
                     if (selectedStation != null) {
+                        android.util.Log.d("RadioService", "Adding station to queue: ${selectedStation.title}")
                         // 선택한 스테이션이 속한 카테고리의 모든 스테이션을 큐에 추가
                         val categoryStations = getCategoryStations(selectedStation)
 
-                        // 선택한 스테이션이 먼저 재생되도록 정렬
-                        val selectedIndex = categoryStations.indexOfFirst { it.url == stationUrl }
-                        val reorderedStations = if (selectedIndex >= 0) {
-                            categoryStations.drop(selectedIndex) + categoryStations.take(selectedIndex)
+                        if (categoryStations.isEmpty()) {
+                            android.util.Log.w("RadioService", "No category stations found, adding single station")
+                            updatedItems.add(createPlayableStationMediaItem(selectedStation))
                         } else {
-                            categoryStations
-                        }
+                            // 선택한 스테이션이 먼저 재생되도록 정렬
+                            val selectedIndex = categoryStations.indexOfFirst { it.url == stationUrl }
+                            val reorderedStations = if (selectedIndex >= 0) {
+                                categoryStations.drop(selectedIndex) + categoryStations.take(selectedIndex)
+                            } else {
+                                categoryStations
+                            }
 
-                        // 모든 스테이션을 재생 가능한 MediaItem으로 변환하여 추가
-                        reorderedStations.forEach { station ->
-                            updatedItems.add(createPlayableStationMediaItem(station))
+                            // 모든 스테이션을 재생 가능한 MediaItem으로 변환하여 추가
+                            reorderedStations.forEach { station ->
+                                updatedItems.add(createPlayableStationMediaItem(station))
+                            }
                         }
+                    } else {
+                        android.util.Log.w("RadioService", "Station not found: $stationUrl, adding original item")
+                        updatedItems.add(mediaItem)
                     }
                 } else {
                     updatedItems.add(mediaItem)
                 }
             }
 
+            android.util.Log.d("RadioService", "Total media items added: ${updatedItems.size}")
             return Futures.immediateFuture(updatedItems)
         }
 
@@ -414,18 +534,16 @@ class RadioService : MediaLibraryService() {
         }
 
         private fun getCategoryStations(selectedStation: RadioStation): List<RadioStation> {
-            // 먼저 즐겨찾기에 있는지 확인
-            val favoriteUrls = runBlocking { favoritesDataSource.favorites.first() }
-            if (favoriteUrls.contains(selectedStation.url)) {
+            // 먼저 즐겨찾기에 있는지 확인 (캐시 사용)
+            if (cachedFavorites.contains(selectedStation.url)) {
                 val allStations = getAllStations()
-                return allStations.filter { favoriteUrls.contains(it.url) }
+                return allStations.filter { cachedFavorites.contains(it.url) }
             }
 
-            // 최근 재생 목록에 있는지 확인
-            val recentUrls = runBlocking { recentStationsDataSource.recentStations.first() }
-            if (recentUrls.contains(selectedStation.url)) {
+            // 최근 재생 목록에 있는지 확인 (캐시 사용)
+            if (cachedRecentStations.contains(selectedStation.url)) {
                 val allStations = getAllStations()
-                return recentUrls.mapNotNull { url ->
+                return cachedRecentStations.mapNotNull { url ->
                     allStations.find { it.url == url }
                 }
             }

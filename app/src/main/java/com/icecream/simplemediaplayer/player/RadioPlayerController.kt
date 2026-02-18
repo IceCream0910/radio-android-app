@@ -6,6 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.TaskStackBuilder
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -97,6 +99,8 @@ class RadioPlayerController @Inject constructor(
     }
 
     private var suppressPlayWhenReadyHandling = false
+    private var audioFocusRetryCount = 0
+    private val MAX_FOCUS_RETRY = 3
 
     val mediaSession: MediaSession = MediaSession.Builder(context, exoPlayer)
         .setId("RadioPlayerSession")
@@ -127,19 +131,48 @@ class RadioPlayerController @Inject constructor(
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             if (suppressPlayWhenReadyHandling) return
 
-            val userDriven = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
-                    reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
-
-            if (!userDriven) return // let ExoPlayer handle focus/noisy cases
+            android.util.Log.d("RadioPlayerController", "onPlayWhenReadyChanged: playWhenReady=$playWhenReady, reason=$reason")
 
             suppressPlayWhenReadyHandling = true
             if (playWhenReady) {
+                // 사용자 기반 또는 리모트 기반 시작
+                audioFocusRetryCount = 0
                 restartFromCurrent()
             } else {
-                pauseAndResetCurrent()
+                // 사용자 중지, 리모트 중지, 또는 AudioFocus 손실 등
+                val isAudioFocusLoss = reason != Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST &&
+                        reason != Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
+
+                if (isAudioFocusLoss) {
+                    // AudioFocus 손실 감지 - 통화 종료 후 복구 시도
+                    android.util.Log.d("RadioPlayerController", "AudioFocus loss detected, reason=$reason, retryCount=$audioFocusRetryCount")
+                    pauseAndResetCurrent()
+                    // 전화 종료 후 자동 복구 시도
+                    attemptAudioFocusRecovery()
+                } else {
+                    // 정상 중지
+                    pauseAndResetCurrent()
+                }
             }
             suppressPlayWhenReadyHandling = false
         }
+    }
+
+    private fun attemptAudioFocusRecovery() {
+        if (audioFocusRetryCount >= MAX_FOCUS_RETRY) {
+            android.util.Log.w("RadioPlayerController", "AudioFocus recovery max retries exceeded")
+            return
+        }
+
+        audioFocusRetryCount++
+        val delayMs = (500L * audioFocusRetryCount).coerceAtMost(3000L)  // 지수 백오프: 500ms, 1000ms, 1500ms
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (exoPlayer.mediaItemCount > 0) {
+                android.util.Log.d("RadioPlayerController", "Attempting AudioFocus recovery (attempt $audioFocusRetryCount)")
+                restartFromCurrent()
+            }
+        }, delayMs)
     }
 
     init {
@@ -316,7 +349,7 @@ class RadioPlayerController @Inject constructor(
     }
 
     fun pauseAndResetCurrent() {
-        exoPlayer.stop()
+        exoPlayer.pause()
     }
 
     fun restartFromCurrent() {
