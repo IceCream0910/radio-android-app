@@ -15,6 +15,21 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.play.core.appupdate.AppUpdateManager
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.install.InstallStateUpdatedListener
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.InstallStatus
+import com.google.android.play.core.install.model.UpdateAvailability
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
+import org.burnoutcrew.reorderable.ReorderableItem
+import org.burnoutcrew.reorderable.detectReorderAfterLongPress
+import org.burnoutcrew.reorderable.rememberReorderableLazyListState
+import org.burnoutcrew.reorderable.reorderable
+import kotlin.math.abs
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
@@ -120,18 +135,29 @@ import com.icecream.simplemediaplayer.ui.SleepTimerViewModel
 import com.icecream.simplemediaplayer.ui.components.player.PlayerBottomSheet
 import com.icecream.simplemediaplayer.ui.components.player.SearchBottomSheet
 import com.icecream.simplemediaplayer.ui.components.player.SleepTimerBottomSheet
-import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.first
-import org.burnoutcrew.reorderable.ReorderableItem
-import org.burnoutcrew.reorderable.detectReorderAfterLongPress
-import org.burnoutcrew.reorderable.rememberReorderableLazyListState
-import org.burnoutcrew.reorderable.reorderable
-import kotlin.math.abs
 
 @UnstableApi
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    private lateinit var appUpdateManager: AppUpdateManager
+
+    private val updateLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) {
+            Log.w("MainActivity", "In-app update canceled or failed: ${result.resultCode}")
+        }
+    }
+
+    private val installStateListener = InstallStateUpdatedListener { state ->
+        if (state.installStatus() == InstallStatus.DOWNLOADED) {
+            showUpdateReadyDialog = true
+        }
+    }
+
+    var showUpdateReadyDialog by mutableStateOf(false)
+        private set
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -172,6 +198,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        appUpdateManager = AppUpdateManagerFactory.create(this)
+        appUpdateManager.registerListener(installStateListener)
 
 
         setContent {
@@ -324,6 +353,27 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun PermissionDialogs() {
+        if (showUpdateReadyDialog) {
+            AlertDialog(
+                onDismissRequest = { showUpdateReadyDialog = false },
+                title = { Text("업데이트 준비 완료") },
+                text = { Text("다운로드가 완료되었습니다. 앱을 재시작하여 업데이트를 적용할까요?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showUpdateReadyDialog = false
+                        appUpdateManager.completeUpdate()
+                    }) {
+                        Text("재시작")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showUpdateReadyDialog = false }) {
+                        Text("나중에")
+                    }
+                }
+            )
+        }
+
         if (showNotificationDialog) {
             AlertDialog(
                 onDismissRequest = { },
@@ -460,6 +510,29 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        checkForAppUpdate()
+    }
+
+    override fun onDestroy() {
+        appUpdateManager.unregisterListener(installStateListener)
+        super.onDestroy()
+    }
+
+    private fun checkForAppUpdate() {
+        appUpdateManager.appUpdateInfo.addOnSuccessListener { info ->
+            when {
+                info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
+                    info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE) -> {
+                    val options = AppUpdateOptions.newBuilder(AppUpdateType.FLEXIBLE).build()
+                    appUpdateManager.startUpdateFlowForResult(info, updateLauncher, options)
+                }
+                info.installStatus() == InstallStatus.DOWNLOADED -> {
+                    showUpdateReadyDialog = true
+                }
+            }
+        }.addOnFailureListener { error ->
+            Log.w("MainActivity", "In-app update check failed", error)
+        }
     }
 }
 

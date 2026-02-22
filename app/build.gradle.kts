@@ -14,8 +14,8 @@ android {
         applicationId = "com.icecream.simplemediaplayer"
         minSdk = 27
         targetSdk = 36
-        versionCode = 14
-        versionName = "2.0.4"
+        versionCode = 15
+        versionName = "2.0.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -90,6 +90,7 @@ dependencies {
     implementation(libs.playServicesAds)
     implementation(libs.coil.compose)
     implementation(libs.reorderable)
+    implementation(libs.play.app.update.ktx)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -23,6 +23,7 @@ material = "1.13.0"
 playServicesAds = "23.6.0"
 coil = "2.5.0"
 reorderable = "0.9.6"
+playAppUpdate = "2.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -64,6 +65,7 @@ androidx-material = { group = "com.google.android.material", name = "material", 
 playServicesAds = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "playServicesAds" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 reorderable = { group = "org.burnoutcrew.composereorderable", name = "reorderable", version.ref = "reorderable" }
+play-app-update-ktx = { group = "com.google.android.play", name = "app-update-ktx", version.ref = "playAppUpdate" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
