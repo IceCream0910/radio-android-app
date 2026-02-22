@@ -176,6 +176,7 @@ class RadioPlayerController @Inject constructor(
     }
 
     init {
+        exoPlayer.repeatMode = Player.REPEAT_MODE_ALL
         exoPlayer.addListener(listener)
     }
 
@@ -358,6 +359,12 @@ class RadioPlayerController @Inject constructor(
         exoPlayer.seekTo(targetIndex, C.TIME_UNSET)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
+    }
+
+    fun stopAndClear() {
+        exoPlayer.playWhenReady = false
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
     }
 
     fun release() {
