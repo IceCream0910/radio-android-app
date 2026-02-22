@@ -112,7 +112,9 @@ class RadioService : MediaLibraryService() {
             this,
             playerController.player,
             MediaLibrarySessionCallback()
-        ).build()
+        )
+            .setId(SESSION_ID)
+            .build()
 
         isInitialized = true
 
@@ -165,7 +167,13 @@ class RadioService : MediaLibraryService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        stopAndRelease()
+        val player = playerController.player
+        val isActivePlayback = player.playWhenReady &&
+            player.playbackState != Player.STATE_IDLE &&
+            player.playbackState != Player.STATE_ENDED
+        if (!isActivePlayback) {
+            stopAndRelease()
+        }
     }
 
     override fun onDestroy() {
@@ -185,7 +193,10 @@ class RadioService : MediaLibraryService() {
             mediaLibrarySession?.player?.pause()
         } catch (_: Throwable) {}
         try {
-            playerController.release()
+            mediaLibrarySession?.release()
+        } catch (_: Throwable) {}
+        try {
+            playerController.stopAndClear()
         } catch (_: Throwable) {}
         mediaLibrarySession = null
         (applicationContext as? RadioApp)?.allowBackgroundPlayback = false
@@ -259,7 +270,7 @@ class RadioService : MediaLibraryService() {
                         android.util.Log.w("RadioService", "No stations loaded yet")
                     } else {
                         android.util.Log.d("RadioService", "Loaded ${stationsByCity.size} city folders")
-                        val cityItems = stationsByCity.keys.sorted().map { city ->
+                        val cityItems = stationsByCity.keys.map { city ->
                             MediaItem.Builder()
                                 .setMediaId("city_$city")
                                 .setMediaMetadata(
@@ -556,5 +567,6 @@ class RadioService : MediaLibraryService() {
 
     companion object {
         const val ACTION_STOP_ALL = "radio_action_stop_all"
+        private const val SESSION_ID = "radio_media_session"
     }
 }

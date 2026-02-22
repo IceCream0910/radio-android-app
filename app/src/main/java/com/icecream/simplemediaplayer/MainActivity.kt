@@ -489,13 +489,18 @@ private fun AppRoot(activity: MainActivity) {
     }
 
     LaunchedEffect(settings.startTab) {
+        navController.currentBackStackEntryFlow.first()
         val targetRoute = when (settings.startTab) {
             "favorites" -> BottomNavDestinations.FAVORITES.route
             else -> BottomNavDestinations.HOME.route
         }
-        navController.navigate(targetRoute) {
-            popUpTo(navController.graph.startDestinationId) { inclusive = true }
-            launchSingleTop = true
+        if (navController.currentDestination?.route != targetRoute) {
+            navController.navigate(targetRoute) {
+                popUpTo(BottomNavDestinations.HOME.route) {
+                    inclusive = targetRoute == BottomNavDestinations.HOME.route
+                }
+                launchSingleTop = true
+            }
         }
     }
 
@@ -559,7 +564,7 @@ private fun AppBottomBar(navController: NavHostController) {
 
     fun navigateSingleTop(route: String) {
         navController.navigate(route) {
-            popUpTo(navController.graph.startDestinationId) { inclusive = false }
+            popUpTo(BottomNavDestinations.HOME.route) { inclusive = false }
             launchSingleTop = true
             restoreState = false
         }
