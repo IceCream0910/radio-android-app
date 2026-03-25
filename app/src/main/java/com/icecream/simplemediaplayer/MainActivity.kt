@@ -188,8 +188,6 @@ class MainActivity : ComponentActivity() {
     var showSettingsDialog by mutableStateOf(false)
         private set
 
-    var showExitDialog by mutableStateOf(false)
-
     var showNetworkDialog by mutableStateOf(false)
 
 
@@ -450,34 +448,7 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        if (showExitDialog) {
-            AlertDialog(
-                onDismissRequest = { showExitDialog = false },
-                title = { Text("앱 종료") },
-                text = { Text("백그라운드 재생을 계속할까요? \n완전 종료를 선택하면 재생이 중지됩니다.") },
-                confirmButton = {
-                    TextButton(onClick = {
-                        (application as? RadioApp)?.allowBackgroundPlayback = true
-                        showExitDialog = false
-                        moveTaskToBack(true)
-                    }) { Text("백그라운드 계속") }
-                },
-                dismissButton = {
-                    TextButton(onClick = {
-                        // full stop
-                        (application as? RadioApp)?.stopAllPlayback()
-                        val stopIntent = Intent(this, RadioService::class.java).apply {
-                            action = RadioService.ACTION_STOP_ALL
-                        }
-                        startService(stopIntent)
-                        stopService(Intent(this, RadioService::class.java))
-                        showExitDialog = false
-                        finishAndRemoveTask()
-                        Process.killProcess(Process.myPid())
-                    }) { Text("완전 종료") }
-                }
-            )
-        }
+
 
         if (showNetworkDialog) {
             AlertDialog(
@@ -577,6 +548,9 @@ private fun AppRoot(activity: MainActivity) {
         }
     }
 
+    // 재생 상태 감시
+    val playerState by playerViewModel.state.collectAsState()
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -587,8 +561,6 @@ private fun AppRoot(activity: MainActivity) {
             },
             bottomBar = {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    val playerState by playerViewModel.state.collectAsState()
-
                     PlayerBottomSheet(
                         playerState = playerState,
                         timerState = timerState,
@@ -627,7 +599,24 @@ private fun AppRoot(activity: MainActivity) {
         }
     }
 
-    BackHandler { activity.showExitDialog = true }
+    // 뒤로가기 시 재생 상태에 따라 동작
+    BackHandler {
+        if (playerState.isPlaying) {
+            // 재생 중이면 백그라운드 이동
+            (activity.application as? RadioApp)?.allowBackgroundPlayback = true
+            activity.moveTaskToBack(true)
+        } else {
+            // 미재생이면 완전 종료
+            (activity.application as? RadioApp)?.stopAllPlayback()
+            val stopIntent = Intent(activity, RadioService::class.java).apply {
+                action = RadioService.ACTION_STOP_ALL
+            }
+            activity.startService(stopIntent)
+            activity.stopService(Intent(activity, RadioService::class.java))
+            activity.finishAndRemoveTask()
+            Process.killProcess(Process.myPid())
+        }
+    }
 }
 
 @Composable
